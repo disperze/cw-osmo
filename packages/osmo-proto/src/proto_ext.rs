@@ -41,8 +41,7 @@ where
         let msg = CosmosMsg::Stargate {
             type_url: self.path(),
             value: data.into(),
-        }
-        .into();
+        };
 
         Ok(msg)
     }
