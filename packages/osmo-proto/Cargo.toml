@@ -10,4 +10,5 @@ license = "Apache-2.0"
 
 [dependencies]
 prost = "0.9"
+prost-types = "0.9"
 cosmwasm-std = { version = "1.0.0-beta5", features = ["stargate"] }
