@@ -1,7 +1,7 @@
 [workspace]
 members = ["contracts/*", "packages/*"]
 
-[profile.release.package.cw-proto]
+[profile.release.package.cw-osmo-proto]
 codegen-units = 1
 incremental = false
 
