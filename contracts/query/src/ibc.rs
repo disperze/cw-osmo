@@ -9,7 +9,7 @@ use cw_osmo_proto::query::query_proto;
 use crate::ibc_msg::{GammPricePacket, PacketAck, PacketMsg, SpotPriceAck};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
-pub const GAMM_VERSION: &str = "gamm-1";
+pub const GAMM_VERSION: &str = "cw-query-1";
 pub const GAMM_ORDERING: IbcOrder = IbcOrder::Unordered;
 
 fn ack_success(result: Binary) -> Binary {
