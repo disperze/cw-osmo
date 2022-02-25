@@ -176,7 +176,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cw-proto"
+name = "cw-osmo-proto"
 version = "0.1.0"
 dependencies = [
  "cosmwasm-std",
