@@ -11,8 +11,8 @@ use cosmwasm_std::{
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
 use crate::state::{
-    reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo,
-    ReplyArgs, ALLOW_LIST, CHANNEL_INFO, REPLY_ARGS,
+    reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST,
+    CHANNEL_INFO, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 

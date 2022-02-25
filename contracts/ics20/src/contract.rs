@@ -13,12 +13,13 @@ use crate::amount::Amount;
 use crate::error::ContractError;
 use crate::ibc::Ics20Packet;
 use crate::msg::{
-    AllowMsg, AllowedInfo, AllowedResponse, ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg,
-    ListAllowedResponse, ListChannelsResponse, PortResponse, QueryMsg, TransferMsg,
+    AllowMsg, AllowedInfo, AllowedResponse, AllowedTokenInfo, AllowedTokenResponse,
+    ChannelResponse, ConfigResponse, ExecuteMsg, ExternalTokenMsg, InitMsg, ListAllowedResponse,
+    ListChannelsResponse, ListExternalTokensResponse, PortResponse, QueryMsg, TransferMsg,
 };
 use crate::state::{
-    increase_channel_balance, AllowInfo, Config, ADMIN, ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE,
-    CONFIG,
+    increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN, ALLOW_LIST,
+    CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
 };
 use cw_utils::{maybe_addr, nonpayable, one_coin};
 
@@ -50,6 +51,14 @@ pub fn instantiate(
         };
         ALLOW_LIST.save(deps.storage, &contract, &info)?;
     }
+
+    // add all external tokens
+    for token in msg.external_tokens {
+        let contract = deps.api.addr_validate(&token.contract)?;
+        let info = ExternalTokenInfo { contract };
+        EXTERNAL_TOKENS.save(deps.storage, &token.denom, &info)?;
+    }
+
     Ok(Response::default())
 }
 
@@ -67,6 +76,7 @@ pub fn execute(
             execute_transfer(deps, env, msg, Amount::Native(coin), info.sender)
         }
         ExecuteMsg::Allow(allow) => execute_allow(deps, env, info, allow),
+        ExecuteMsg::AllowExternalToken(token) => allow_external_token(deps, env, info, token),
         ExecuteMsg::UpdateAdmin { admin } => {
             let admin = deps.api.addr_validate(&admin)?;
             Ok(ADMIN.execute_update_admin(deps, info, Some(admin))?)
@@ -195,6 +205,29 @@ pub fn execute_allow(
     Ok(res)
 }
 
+pub fn allow_external_token(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    allow: ExternalTokenMsg,
+) -> Result<Response, ContractError> {
+    ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
+    if EXTERNAL_TOKENS.has(deps.storage, &allow.denom) {
+        return Err(ContractError::ExternalTokenExists {});
+    }
+
+    let contract = deps.api.addr_validate(&allow.contract)?;
+    let set = ExternalTokenInfo { contract };
+
+    EXTERNAL_TOKENS.save(deps.storage, &allow.denom, &set)?;
+
+    let res = Response::new()
+        .add_attribute("action", "allow_external_token")
+        .add_attribute("denom", allow.denom)
+        .add_attribute("contract", allow.contract);
+    Ok(res)
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -203,8 +236,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Channel { id } => to_binary(&query_channel(deps, id)?),
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
         QueryMsg::Allowed { contract } => to_binary(&query_allowed(deps, contract)?),
+        QueryMsg::ExternalToken { denom } => to_binary(&query_external_token(deps, denom)?),
         QueryMsg::ListAllowed { start_after, limit } => {
             to_binary(&list_allowed(deps, start_after, limit)?)
+        }
+        QueryMsg::ListExternalTokens { start_after, limit } => {
+            to_binary(&list_external_tokens(deps, start_after, limit)?)
         }
         QueryMsg::Admin {} => to_binary(&ADMIN.query_admin(deps)?),
     }
@@ -275,6 +312,21 @@ fn query_allowed(deps: Deps, contract: String) -> StdResult<AllowedResponse> {
     Ok(res)
 }
 
+fn query_external_token(deps: Deps, denom: String) -> StdResult<AllowedTokenResponse> {
+    let info = EXTERNAL_TOKENS.may_load(deps.storage, denom.as_str())?;
+    let res = match info {
+        None => AllowedTokenResponse {
+            is_allowed: false,
+            contract: None,
+        },
+        Some(a) => AllowedTokenResponse {
+            is_allowed: true,
+            contract: Some(a.contract.to_string()),
+        },
+    };
+    Ok(res)
+}
+
 // settings for pagination
 const MAX_LIMIT: u32 = 30;
 const DEFAULT_LIMIT: u32 = 10;
@@ -299,6 +351,27 @@ fn list_allowed(
         })
         .collect::<StdResult<_>>()?;
     Ok(ListAllowedResponse { allow })
+}
+
+fn list_external_tokens(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<ListExternalTokensResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into()));
+
+    let tokens = EXTERNAL_TOKENS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item| {
+            item.map(|(addr, allow)| AllowedTokenInfo {
+                denom: addr,
+                contract: allow.contract.into(),
+            })
+        })
+        .collect::<StdResult<_>>()?;
+    Ok(ListExternalTokensResponse { tokens })
 }
 
 #[cfg(test)]
@@ -342,7 +415,10 @@ mod test {
             },
         )
         .unwrap_err();
-        assert_eq!(err, StdError::not_found("cw_gamm_ics20::state::ChannelInfo"));
+        assert_eq!(
+            err,
+            StdError::not_found("cw_gamm_ics20::state::ChannelInfo")
+        );
     }
 
     #[test]

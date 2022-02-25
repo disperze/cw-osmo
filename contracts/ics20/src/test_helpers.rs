@@ -73,6 +73,7 @@ pub fn setup(
         default_timeout: DEFAULT_TIMEOUT,
         gov_contract: "gov".to_string(),
         allowlist,
+        external_tokens: vec![],
     };
     let info = mock_info(&String::from("anyone"), &[]);
     let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();

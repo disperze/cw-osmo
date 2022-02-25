@@ -14,12 +14,21 @@ pub struct InitMsg {
     pub gov_contract: String,
     /// initial allowlist - all cw20 tokens we will send must be previously allowed by governance
     pub allowlist: Vec<AllowMsg>,
+    /// all external tokens we will send must be previously allowed by governance
+    pub external_tokens: Vec<ExternalTokenMsg>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct AllowMsg {
     pub contract: String,
     pub gas_limit: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ExternalTokenMsg {
+    /// External denom
+    pub denom: String,
+    pub contract: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -31,6 +40,8 @@ pub enum ExecuteMsg {
     Transfer(TransferMsg),
     /// This must be called by gov_contract, will allow a new cw20 token to be sent
     Allow(AllowMsg),
+    /// This must be called by gov_contract, will allow a new external token to be received
+    AllowExternalToken(ExternalTokenMsg),
     /// Change the admin (must be called by current admin)
     UpdateAdmin { admin: String },
 }
@@ -64,8 +75,15 @@ pub enum QueryMsg {
     Admin {},
     /// Query if a given cw20 contract is allowed. Returns AllowedResponse
     Allowed { contract: String },
+    /// Query if a given external token is allowed. Returns AllowedTokenResponse
+    ExternalToken { denom: String },
     /// List all allowed cw20 contracts. Returns ListAllowedResponse
     ListAllowed {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
+    /// List all allowed external tokens. Returns ListExternalTokensResponse
+    ListExternalTokens {
         start_after: Option<String>,
         limit: Option<u32>,
     },
@@ -110,7 +128,24 @@ pub struct ListAllowedResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct AllowedTokenResponse {
+    pub is_allowed: bool,
+    pub contract: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AllowedInfo {
     pub contract: String,
     pub gas_limit: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct ListExternalTokensResponse {
+    pub tokens: Vec<AllowedTokenInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct AllowedTokenInfo {
+    pub denom: String,
+    pub contract: String,
 }
