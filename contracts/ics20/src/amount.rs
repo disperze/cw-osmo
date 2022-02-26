@@ -44,7 +44,7 @@ impl Amount {
     pub fn denom(&self) -> String {
         match self {
             Amount::Native(c) => c.denom.clone(),
-            Amount::Cw20(c) => format!("cw20:{}", c.address.as_str()),
+            Amount::Cw20(c) => get_cw20_denom(c.address.as_str()),
         }
     }
 
@@ -66,4 +66,8 @@ impl Amount {
             Amount::Cw20(c) => c.amount.is_zero(),
         }
     }
+}
+
+pub fn get_cw20_denom(contract: &str) -> String {
+    format!("cw20:{}", contract)
 }

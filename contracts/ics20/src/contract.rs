@@ -18,8 +18,8 @@ use crate::msg::{
     ListChannelsResponse, ListExternalTokensResponse, PortResponse, QueryMsg, TransferMsg,
 };
 use crate::state::{
-    find_external_token, increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN,
-    ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
+    find_external_token, increase_channel_balance, join_ibc_paths, AllowInfo, Config,
+    ExternalTokenInfo, ADMIN, ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
 };
 use cw_utils::{maybe_addr, nonpayable, one_coin};
 
@@ -121,12 +121,14 @@ pub fn execute_transfer(
 
         let token = find_external_token(deps.storage, coin.clone().address)?;
         if let Some(ext_denom) = token {
+            // TODO: add port_id to external_token info
             let q = WasmQuery::ContractInfo {
                 contract_addr: env.contract.address.into(),
             };
             let res: ContractInfoResponse = deps.querier.query(&q.into())?;
+            let ibc_prefix = join_ibc_paths(res.ibc_port.unwrap().as_str(), msg.channel.as_str());
 
-            denom = format!("{}/{}/{}", res.ibc_port.unwrap(), msg.channel, ext_denom); // ibc voucher
+            denom = join_ibc_paths(ibc_prefix.as_str(), ext_denom.as_str());
             our_chain = false;
         }
     };

@@ -8,11 +8,11 @@ use cosmwasm_std::{
     IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, Storage, SubMsg, Uint128, WasmMsg,
 };
 
-use crate::amount::Amount;
+use crate::amount::{get_cw20_denom, Amount};
 use crate::error::{ContractError, Never};
 use crate::state::{
-    reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST,
-    CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
+    join_ibc_paths, reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs,
+    ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 
@@ -216,17 +216,14 @@ fn parse_voucher(
     voucher_denom: String,
     remote_endpoint: &IbcEndpoint,
 ) -> Result<Voucher, ContractError> {
-    let ibc_prefix = format!(
-        "{}/{}",
-        &remote_endpoint.port_id, &remote_endpoint.channel_id
-    );
+    let ibc_prefix = join_ibc_paths(&remote_endpoint.port_id, &remote_endpoint.channel_id);
     if !voucher_denom.starts_with(&ibc_prefix) {
         let token = EXTERNAL_TOKENS
             .load(storage, voucher_denom.as_ref())
             .map_err(|_| ContractError::NoAllowedToken {})?;
 
         let data = Voucher {
-            denom: format!("cw20:{}", token.contract.as_str()),
+            denom: get_cw20_denom(token.contract.as_str()),
             our_chain: false,
         };
         return Ok(data);
@@ -259,10 +256,7 @@ fn parse_voucher_ack(
     voucher_denom: String,
     remote_endpoint: &IbcEndpoint,
 ) -> Result<Voucher, ContractError> {
-    let ibc_prefix = format!(
-        "{}/{}",
-        &remote_endpoint.port_id, &remote_endpoint.channel_id
-    );
+    let ibc_prefix = join_ibc_paths(&remote_endpoint.port_id, &remote_endpoint.channel_id);
     if !voucher_denom.starts_with(&ibc_prefix) {
         return Ok(Voucher {
             denom: voucher_denom,
@@ -280,7 +274,7 @@ fn parse_voucher_ack(
         .map_err(|_| ContractError::NoAllowedToken {})?;
 
     Ok(Voucher {
-        denom: format!("cw20:{}", token.contract.as_str()),
+        denom: get_cw20_denom(token.contract.as_str()),
         our_chain: false,
     })
 }

@@ -65,6 +65,10 @@ pub struct ReplyArgs {
     pub our_chain: bool,
 }
 
+pub fn join_ibc_paths(path_a: &str, path_b: &str) -> String {
+    format!("{}/{}", path_a, path_b)
+}
+
 pub fn increase_channel_balance(
     storage: &mut dyn Storage,
     channel: &str,
