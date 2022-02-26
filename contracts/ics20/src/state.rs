@@ -62,6 +62,7 @@ pub struct ReplyArgs {
     pub channel: String,
     pub denom: String,
     pub amount: Uint128,
+    pub our_chain: bool,
 }
 
 pub fn increase_channel_balance(

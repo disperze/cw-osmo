@@ -91,25 +91,16 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         RECEIVE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => {
-                // Important design note:  with ibcv2 and wasmd 0.22 we can implement this all much easier.
-                // No reply needed... the receive function and submessage should return error on failure and all
-                // state gets reverted with a proper app-level message auto-generated
-
-                // Since we need compatibility with Juno (Jan 2022), we need to ensure that optimisitic
-                // state updates in ibc_packet_receive get reverted in the (unlikely) chance of an
-                // error while sending the token
-
-                // However, this requires passing some state between the ibc_packet_receive function and
-                // the reply handler. We do this with a singleton, with is "okay" for IBC as there is no
-                // reentrancy on these functions (cannot be called by another contract). This pattern
-                // should not be used for ExecuteMsg handlers
                 let reply_args = REPLY_ARGS.load(deps.storage)?;
-                undo_reduce_channel_balance(
-                    deps.storage,
-                    &reply_args.channel,
-                    &reply_args.denom,
-                    reply_args.amount,
-                )?;
+
+                if reply_args.our_chain {
+                    undo_reduce_channel_balance(
+                        deps.storage,
+                        &reply_args.channel,
+                        &reply_args.denom,
+                        reply_args.amount,
+                    )?;
+                }
 
                 Ok(Response::new().set_data(ack_fail(err)))
             }
@@ -168,7 +159,7 @@ fn enforce_order_and_version(
     channel: &IbcChannel,
     counterparty_version: Option<&str>,
 ) -> Result<(), ContractError> {
-    if channel.version != ICS20_VERSION {
+    if channel.version.as_str() != ICS20_VERSION {
         return Err(ContractError::InvalidIbcVersion {
             version: channel.version.clone(),
         });
@@ -234,9 +225,8 @@ fn parse_voucher(
             .load(storage, voucher_denom.as_ref())
             .map_err(|_| ContractError::NoAllowedToken {})?;
 
-        let ctr = token.contract;
         let data = Voucher {
-            denom: ctr.into(),
+            denom: token.contract.into(),
             our_chain: false,
         };
         return Ok(data);
@@ -308,14 +298,17 @@ fn do_ibc_packet_receive(
     let voucher = parse_voucher(deps.storage, msg.denom, &packet.src)?;
     let denom = voucher.denom.as_str();
 
-    // make sure we have enough balance for this
-    reduce_channel_balance(deps.storage, &channel, denom, msg.amount)?;
+    if voucher.our_chain {
+        // make sure we have enough balance for this
+        reduce_channel_balance(deps.storage, &channel, denom, msg.amount)?;
+    }
 
     // we need to save the data to update the balances in reply
     let reply_args = ReplyArgs {
         channel,
         denom: denom.to_string(),
         amount: msg.amount,
+        our_chain: voucher.our_chain,
     };
     REPLY_ARGS.save(deps.storage, &reply_args)?;
 
@@ -409,7 +402,9 @@ fn on_packet_failure(
     let voucher = parse_voucher_ack(deps.storage, msg.denom, &packet.src)?;
     let denom = voucher.denom.as_str();
 
-    reduce_channel_balance(deps.storage, &packet.src.channel_id, denom, msg.amount)?;
+    if voucher.our_chain {
+        reduce_channel_balance(deps.storage, &packet.src.channel_id, denom, msg.amount)?;
+    }
 
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
     let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;

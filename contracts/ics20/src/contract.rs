@@ -111,7 +111,7 @@ pub fn execute_transfer(
     }
 
     // if cw20 token, ensure it is whitelisted
-    let mut denom: String = amount.denom();
+    let mut denom = amount.denom();
     let mut our_chain = true;
     if let Amount::Cw20(coin) = &amount {
         let addr = deps.api.addr_validate(&coin.address)?;
@@ -143,10 +143,12 @@ pub fn execute_transfer(
     let packet = Ics20Packet::new(amount.amount(), denom, sender.as_ref(), &msg.remote_address);
     packet.validate()?;
 
-    // Update the balance now (optimistically) like ibctransfer modules.
-    // In on_packet_failure (ack with error message or a timeout), we reduce the balance appropriately.
-    // This means the channel works fine if success acks are not relayed.
-    increase_channel_balance(deps.storage, &msg.channel, &amount.denom(), amount.amount())?;
+    if our_chain {
+        // Update the balance now (optimistically) like ibctransfer modules.
+        // In on_packet_failure (ack with error message or a timeout), we reduce the balance appropriately.
+        // This means the channel works fine if success acks are not relayed.
+        increase_channel_balance(deps.storage, &msg.channel, &amount.denom(), amount.amount())?;
+    }
 
     // prepare ibc message
     let msg = IbcMsg::SendPacket {
