@@ -51,6 +51,9 @@ pub enum ContractError {
     #[error("Parsed channel from denom ({channel}) doesn't match packet")]
     FromOtherChannel { channel: String },
 
+    #[error("User cannot close channel")]
+    CannotClose {},
+
     #[error("Cannot migrate from different contract type: {previous_contract}")]
     CannotMigrate { previous_contract: String },
 

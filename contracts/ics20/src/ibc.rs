@@ -181,11 +181,13 @@ fn enforce_order_and_version(
 pub fn ibc_channel_close(
     _deps: DepsMut,
     _env: Env,
-    _channel: IbcChannelCloseMsg,
+    channel: IbcChannelCloseMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // TODO: what to do here?
-    // we will have locked funds that need to be returned somehow
-    unimplemented!();
+    match channel {
+        IbcChannelCloseMsg::CloseConfirm { .. } => Ok(IbcBasicResponse::new()),
+        IbcChannelCloseMsg::CloseInit { .. } => Err(ContractError::CannotClose {}),
+        _ => panic!(),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -484,8 +486,8 @@ mod test {
         // Example message generated from the SDK
         let expected = r#"{"amount":"12345","denom":"ucosm","receiver":"wasm1fucynrfkrt684pm8jrt8la5h2csvs5cnldcgqc","sender":"cosmos1zedxv25ah8fksmg2lzrndrpkvsjqgk4zt5ff7n"}"#;
 
-        let encdoded = String::from_utf8(to_vec(&packet).unwrap()).unwrap();
-        assert_eq!(expected, encdoded.as_str());
+        let encoded = String::from_utf8(to_vec(&packet).unwrap()).unwrap();
+        assert_eq!(expected, encoded.as_str());
     }
 
     fn cw20_payment(

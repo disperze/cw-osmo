@@ -71,3 +71,24 @@ impl Amount {
 pub fn get_cw20_denom(contract: &str) -> String {
     format!("cw20:{}", contract)
 }
+
+#[cfg(test)]
+mod test {
+    use crate::amount::Amount;
+    use cosmwasm_std::Uint128;
+
+    #[test]
+    fn parse_amount() {
+        // native denom
+        let res = Amount::from_parts("ucosm".to_string(), 1u8.into());
+
+        assert_eq!("ucosm", res.denom());
+        assert_eq!(Uint128::new(1), res.amount());
+
+        // cw20 token
+        let res = Amount::from_parts("cw20:my-token".to_string(), 1u8.into());
+
+        assert_eq!("cw20:my-token", res.denom());
+        assert_eq!(Uint128::new(1), res.amount());
+    }
+}
