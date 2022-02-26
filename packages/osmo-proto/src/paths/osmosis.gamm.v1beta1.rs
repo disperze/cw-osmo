@@ -5,3 +5,9 @@ impl ProtoUrl for QuerySpotPriceRequest {
         String::from("/osmosis.gamm.v1beta1.Query/SpotPrice")
     }
 }
+
+impl ProtoUrl for MsgSwapExactAmountIn {
+    fn path(&self) -> String {
+        String::from("/osmosis.gamm.v1beta1.MsgSwapExactAmountIn")
+    }
+}
