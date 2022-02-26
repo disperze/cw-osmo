@@ -47,13 +47,6 @@ pub fn instantiate(
         ALLOW_LIST.save(deps.storage, &contract, &info)?;
     }
 
-    // add all external tokens
-    for token in msg.external_tokens {
-        let contract = deps.api.addr_validate(&token.contract)?;
-        let info = ExternalTokenInfo { contract };
-        EXTERNAL_TOKENS.save(deps.storage, &token.denom, &info)?;
-    }
-
     Ok(Response::default())
 }
 
