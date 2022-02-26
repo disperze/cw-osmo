@@ -1,3 +1,5 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Binary, Uint128};
 use crate::ContractError;
 
@@ -14,6 +16,9 @@ pub struct Ics20Packet {
     pub receiver: String,
     /// the sender address
     pub sender: String,
+    /// Action packet
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<OsmoPacket>,
 }
 
 impl Ics20Packet {
@@ -23,6 +28,7 @@ impl Ics20Packet {
             amount,
             sender: sender.to_string(),
             receiver: receiver.to_string(),
+            action: None,
         }
     }
 
@@ -49,4 +55,31 @@ pub struct Voucher {
     pub denom: String,
     /// denom is from source chain.
     pub our_chain: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum OsmoPacket {
+    Swap(SwapPacket),
+}
+
+/// Swap Packet
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct SwapPacket {
+    pub sender: String,
+    pub routes: Vec<SwapAmountInRoute>,
+    pub token_out_min_amount: Uint128,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct SwapAmountInRoute {
+    pub pool_id: Uint128,
+    pub token_out_denom: String,
+}
+
+/// This is the success response we send on ack for PacketMsg::Balance.
+/// Just acknowledge success or error
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct SwapResponse {
+    pub amount: Uint128,
+    pub denom: String,
 }

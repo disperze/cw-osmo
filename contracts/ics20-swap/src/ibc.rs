@@ -1,6 +1,3 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps,
     DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
@@ -482,6 +479,7 @@ mod test {
             amount: amount.into(),
             sender: "remote-sender".to_string(),
             receiver: receiver.to_string(),
+            action: None,
         };
         print!("Packet denom: {}", &data.denom);
         IbcPacket::new(
@@ -543,6 +541,7 @@ mod test {
             amount: Uint128::new(987654321),
             sender: "local-sender".to_string(),
             receiver: "remote-rcpt".to_string(),
+            action: None,
         };
         let timeout = mock_env().block.time.plus_seconds(DEFAULT_TIMEOUT);
         assert_eq!(

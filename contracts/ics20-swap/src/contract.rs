@@ -11,7 +11,7 @@ use cw_storage_plus::Bound;
 
 use crate::amount::Amount;
 use crate::error::ContractError;
-use crate::ibc::Ics20Packet;
+use crate::ibc_msg::Ics20Packet;
 use crate::msg::{
     AllowMsg, AllowedInfo, AllowedResponse, AllowedTokenInfo, AllowedTokenResponse,
     ChannelResponse, ConfigResponse, ExecuteMsg, ExternalTokenMsg, InitMsg, ListAllowedResponse,
