@@ -63,7 +63,6 @@ pub enum Ics20Ack {
     Error(String),
 }
 
-#[derive(Clone)]
 pub struct Voucher {
     pub denom: String,
     /// denom is from source chain.
