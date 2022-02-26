@@ -5,7 +5,7 @@ use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, C
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::state::{reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, REPLY_ARGS, EXTERNAL_TOKENS};
+use crate::state::{reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, REPLY_ARGS, EXTERNAL_TOKENS, CONFIG};
 use cw20::Cw20ExecuteMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
@@ -117,11 +117,17 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
 #[cfg_attr(not(feature = "library"), entry_point)]
 /// enforces ordering and versioning constraints
 pub fn ibc_channel_open(
-    _deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
 ) -> Result<(), ContractError> {
     enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
+
+    let cfg = CONFIG.load(deps.storage)?;
+    if cfg.init_channel {
+        return Err(ContractError::OnlyOneChannel {});
+    }
+
     Ok(())
 }
 
@@ -142,6 +148,10 @@ pub fn ibc_channel_connect(
         connection_id: channel.connection_id,
     };
     CHANNEL_INFO.save(deps.storage, &info.id, &info)?;
+    CONFIG.update(deps.storage, |mut cfg| -> Result<_, ContractError> {
+        cfg.init_channel = true;
+        Ok(cfg)
+    })?;
 
     Ok(IbcBasicResponse::default())
 }
@@ -540,7 +550,8 @@ mod test {
         let cw20_denom = "cw20:token-addr";
         let gas_limit = 1234567;
         let mut deps = setup(
-            &["channel-1", "channel-7", send_channel],
+            // &["channel-1", "channel-7", send_channel], // TODO: Allow multiple channels.
+            &[send_channel],
             &[(cw20_addr, gas_limit)],
         );
 
@@ -621,7 +632,7 @@ mod test {
     #[test]
     fn send_receive_native() {
         let send_channel = "channel-9";
-        let mut deps = setup(&["channel-1", "channel-7", send_channel], &[]);
+        let mut deps = setup(&[send_channel], &[]); // TODO: Allow multiple channels
 
         let denom = "uatom";
 

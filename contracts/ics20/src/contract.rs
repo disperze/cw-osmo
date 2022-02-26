@@ -31,6 +31,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let cfg = Config {
         default_timeout: msg.default_timeout,
+        init_channel: false,
     };
     CONFIG.save(deps.storage, &cfg)?;
 
@@ -418,13 +419,13 @@ mod test {
 
     #[test]
     fn setup_and_query() {
-        let deps = setup(&["channel-3", "channel-7"], &[]);
+        let deps = setup(&["channel-3"], &[]);
 
         let raw_list = query(deps.as_ref(), mock_env(), QueryMsg::ListChannels {}).unwrap();
         let list_res: ListChannelsResponse = from_binary(&raw_list).unwrap();
-        assert_eq!(2, list_res.channels.len());
+        assert_eq!(1, list_res.channels.len());
         assert_eq!(mock_channel_info("channel-3"), list_res.channels[0]);
-        assert_eq!(mock_channel_info("channel-7"), list_res.channels[1]);
+        // assert_eq!(mock_channel_info("channel-7"), list_res.channels[1]);
 
         let raw_channel = query(
             deps.as_ref(),
@@ -456,7 +457,7 @@ mod test {
     #[test]
     fn proper_checks_on_execute_native() {
         let send_channel = "channel-5";
-        let mut deps = setup(&[send_channel, "channel-10"], &[]);
+        let mut deps = setup(&[send_channel], &[]);
 
         let mut transfer = TransferMsg {
             channel: send_channel.to_string(),
@@ -517,7 +518,7 @@ mod test {
     fn proper_checks_on_execute_cw20() {
         let send_channel = "channel-15";
         let cw20_addr = "my-token";
-        let mut deps = setup(&["channel-3", send_channel], &[(cw20_addr, 123456)]);
+        let mut deps = setup(&[send_channel], &[(cw20_addr, 123456)]);
 
         let transfer = TransferMsg {
             channel: send_channel.to_string(),
@@ -562,7 +563,7 @@ mod test {
     #[test]
     fn execute_cw20_fails_if_not_whitelisted() {
         let send_channel = "channel-15";
-        let mut deps = setup(&["channel-3", send_channel], &[]);
+        let mut deps = setup(&[send_channel], &[]);
 
         let cw20_addr = "my-token";
         let transfer = TransferMsg {
