@@ -68,6 +68,9 @@ pub enum ContractError {
 
     #[error("Already registered external token denomination")]
     ExternalTokenExists,
+
+    #[error("Only accepts external tokens that have been explicitly allowed by governance")]
+    NoAllowedToken {},
 }
 
 impl From<FromUtf8Error> for ContractError {

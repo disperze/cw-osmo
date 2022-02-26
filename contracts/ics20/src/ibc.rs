@@ -1,19 +1,11 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps,
-    DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
-    IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, SubMsg, Uint128, WasmMsg,
-};
+use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, SubMsg, Uint128, WasmMsg, Storage};
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::state::{
-    reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST,
-    CHANNEL_INFO, REPLY_ARGS,
-};
+use crate::state::{reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, REPLY_ARGS, EXTERNAL_TOKENS};
 use cw20::Cw20ExecuteMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
@@ -61,6 +53,13 @@ impl Ics20Packet {
 pub enum Ics20Ack {
     Result(Binary),
     Error(String),
+}
+
+#[derive(Clone)]
+pub struct Voucher {
+    pub denom: String,
+    /// denom is from source chain.
+    pub our_chain: bool,
 }
 
 // create a serialized success message
@@ -203,10 +202,24 @@ pub fn ibc_packet_receive(
 
 // Returns local denom if the denom is an encoded voucher from the expected endpoint
 // Otherwise, error
-fn parse_voucher_denom<'a>(
-    voucher_denom: &'a str,
+fn parse_voucher(
+    storage: &mut dyn Storage,
+    voucher_denom: String,
     remote_endpoint: &IbcEndpoint,
-) -> Result<&'a str, ContractError> {
+) -> Result<Voucher, ContractError> {
+    let ibc_prefix = format!("{}/{}", &remote_endpoint.port_id, &remote_endpoint.channel_id);
+    if !voucher_denom.starts_with(&ibc_prefix) {
+        let token = EXTERNAL_TOKENS.load(storage, voucher_denom.as_ref())
+            .map_err(|_| ContractError::NoAllowedToken {})?;
+
+        let ctr = token.contract;
+        let data = Voucher{
+            denom: ctr.into(),
+            our_chain: false,
+        };
+        return Ok(data.clone());
+    }
+
     let split_denom: Vec<&str> = voucher_denom.splitn(3, '/').collect();
     if split_denom.len() != 3 {
         return Err(ContractError::NoForeignTokens {});
@@ -223,7 +236,37 @@ fn parse_voucher_denom<'a>(
         });
     }
 
-    Ok(split_denom[2])
+    Ok(Voucher{
+        denom: split_denom[2].to_string(),
+        our_chain: true,
+    })
+}
+
+fn parse_voucher_ack(
+    storage: &mut dyn Storage,
+    voucher_denom: String,
+    remote_endpoint: &IbcEndpoint,
+) -> Result<Voucher, ContractError> {
+    let ibc_prefix = format!("{}/{}", &remote_endpoint.port_id, &remote_endpoint.channel_id);
+    if !voucher_denom.starts_with(&ibc_prefix) {
+        return Ok(Voucher{
+            denom: voucher_denom,
+            our_chain: true,
+        });
+    }
+
+    let split_denom: Vec<&str> = voucher_denom.splitn(3, '/').collect();
+    if split_denom.len() != 3 {
+        return Err(ContractError::NoForeignTokens {});
+    }
+
+    let token = EXTERNAL_TOKENS.load(storage, split_denom[2])
+        .map_err(|_| ContractError::NoAllowedToken {})?;
+
+    Ok(Voucher{
+        denom: token.contract.into(),
+        our_chain: false,
+    })
 }
 
 // this does the work of ibc_packet_receive, we wrap it to turn errors into acknowledgements
@@ -236,7 +279,8 @@ fn do_ibc_packet_receive(
 
     // If the token originated on the remote chain, it looks like "ucosm".
     // If it originated on our chain, it looks like "port/channel/ucosm".
-    let denom = parse_voucher_denom(&msg.denom, &packet.src)?;
+    let voucher = parse_voucher(deps.storage,msg.denom, &packet.src)?;
+    let denom = voucher.denom.as_str();
 
     // make sure we have enough balance for this
     reduce_channel_balance(deps.storage, &channel, denom, msg.amount)?;
@@ -251,7 +295,7 @@ fn do_ibc_packet_receive(
 
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
     let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
-    let send = send_amount(to_send, msg.receiver.clone());
+    let send = send_amount(to_send, msg.receiver.clone(), voucher.our_chain);
     let mut submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
     submsg.gas_limit = gas_limit;
 
@@ -336,11 +380,14 @@ fn on_packet_failure(
 ) -> Result<IbcBasicResponse, ContractError> {
     let msg: Ics20Packet = from_binary(&packet.data)?;
 
-    reduce_channel_balance(deps.storage, &packet.src.channel_id, &msg.denom, msg.amount)?;
+    let voucher = parse_voucher_ack(deps.storage, msg.denom, &packet.src)?;
+    let denom = voucher.denom.as_str();
 
-    let to_send = Amount::from_parts(msg.denom.clone(), msg.amount);
+    reduce_channel_balance(deps.storage, &packet.src.channel_id, denom, msg.amount)?;
+
+    let to_send = Amount::from_parts(denom.to_string(), msg.amount);
     let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
-    let send = send_amount(to_send, msg.sender.clone());
+    let send = send_amount(to_send, msg.sender.clone(), voucher.our_chain);
     let mut submsg = SubMsg::reply_on_error(send, ACK_FAILURE_ID);
     submsg.gas_limit = gas_limit;
 
@@ -350,7 +397,7 @@ fn on_packet_failure(
         .add_attribute("action", "acknowledge")
         .add_attribute("sender", msg.sender)
         .add_attribute("receiver", msg.receiver)
-        .add_attribute("denom", msg.denom)
+        .add_attribute("denom", denom)
         .add_attribute("amount", msg.amount.to_string())
         .add_attribute("success", "false")
         .add_attribute("error", err);
@@ -358,7 +405,7 @@ fn on_packet_failure(
     Ok(res)
 }
 
-fn send_amount(amount: Amount, recipient: String) -> CosmosMsg {
+fn send_amount(amount: Amount, recipient: String, our_chain: bool) -> CosmosMsg {
     match amount {
         Amount::Native(coin) => BankMsg::Send {
             to_address: recipient,
@@ -366,10 +413,19 @@ fn send_amount(amount: Amount, recipient: String) -> CosmosMsg {
         }
         .into(),
         Amount::Cw20(coin) => {
-            let msg = Cw20ExecuteMsg::Transfer {
-                recipient,
-                amount: coin.amount,
-            };
+            let msg =
+                if our_chain {
+                    Cw20ExecuteMsg::Transfer {
+                        recipient,
+                        amount: coin.amount,
+                    }
+                } else {
+                    Cw20ExecuteMsg::Mint {
+                        recipient,
+                        amount: coin.amount,
+                    }
+                };
+
             WasmMsg::Execute {
                 contract_addr: coin.address,
                 msg: to_binary(&msg).unwrap(),

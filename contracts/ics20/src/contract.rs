@@ -1,12 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, IbcQuery, MessageInfo, Order,
-    PortIdResponse, Response, StdResult,
-};
+use cosmwasm_std::{from_binary, to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, IbcQuery, MessageInfo, Order, PortIdResponse, Response, StdResult, WasmMsg, CosmosMsg, WasmQuery, ContractInfoResponse};
 
 use cw2::set_contract_version;
-use cw20::{Cw20Coin, Cw20ReceiveMsg};
+use cw20::{Cw20Coin, Cw20ExecuteMsg, Cw20ReceiveMsg};
 use cw_storage_plus::Bound;
 
 use crate::amount::Amount;
@@ -17,10 +14,7 @@ use crate::msg::{
     ChannelResponse, ConfigResponse, ExecuteMsg, ExternalTokenMsg, InitMsg, ListAllowedResponse,
     ListChannelsResponse, ListExternalTokensResponse, PortResponse, QueryMsg, TransferMsg,
 };
-use crate::state::{
-    increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN, ALLOW_LIST,
-    CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
-};
+use crate::state::{increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN, ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS, find_external_token};
 use cw_utils::{maybe_addr, nonpayable, one_coin};
 
 // version info for migration info
@@ -117,11 +111,22 @@ pub fn execute_transfer(
     }
 
     // if cw20 token, ensure it is whitelisted
+    let mut denom: String = amount.denom().to_string();
+    let mut our_chain = true;
     if let Amount::Cw20(coin) = &amount {
         let addr = deps.api.addr_validate(&coin.address)?;
         ALLOW_LIST
             .may_load(deps.storage, &addr)?
             .ok_or(ContractError::NotOnAllowList)?;
+
+        let token = find_external_token(deps.storage, coin.clone().address)?;
+        if let Some(ext_denom) = token {
+            let q = WasmQuery::ContractInfo {contract_addr: env.contract.address.into()};
+            let res: ContractInfoResponse = deps.querier.query(&q.into())?;
+
+            denom = format!("{}/{}/{}", res.ibc_port.unwrap(), msg.channel, ext_denom); // ibc voucher
+            our_chain = false;
+        }
     };
 
     // delta from user is in seconds
@@ -135,7 +140,7 @@ pub fn execute_transfer(
     // build ics20 packet
     let packet = Ics20Packet::new(
         amount.amount(),
-        amount.denom(),
+        denom,
         sender.as_ref(),
         &msg.remote_address,
     );
@@ -161,7 +166,34 @@ pub fn execute_transfer(
         .add_attribute("receiver", &packet.receiver)
         .add_attribute("denom", &packet.denom)
         .add_attribute("amount", &packet.amount.to_string());
+
+    let burn = safe_burn(amount, our_chain);
+    if let Some(msg) = burn {
+        return Ok(res.add_message(msg));
+    }
+
     Ok(res)
+}
+
+fn safe_burn(amount: Amount, our_chain: bool) -> Option<CosmosMsg> {
+    match amount {
+        Amount::Native(_) => None,
+        Amount::Cw20(coin) => {
+            if our_chain {
+                return None
+            }
+
+            let msg = Cw20ExecuteMsg::Burn {
+                amount: coin.amount,
+            };
+
+            Some(WasmMsg::Execute {
+                contract_addr: coin.address,
+                msg: to_binary(&msg).unwrap(),
+                funds: vec![],
+            }.into())
+        }
+    }
 }
 
 /// The gov contract can allow new contracts, or increase the gas limit on existing contracts.
@@ -365,8 +397,8 @@ fn list_external_tokens(
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .map(|item| {
-            item.map(|(addr, allow)| AllowedTokenInfo {
-                denom: addr,
+            item.map(|(denom, allow)| AllowedTokenInfo {
+                denom,
                 contract: allow.contract.into(),
             })
         })

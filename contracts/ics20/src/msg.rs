@@ -28,6 +28,7 @@ pub struct AllowMsg {
 pub struct ExternalTokenMsg {
     /// External denom
     pub denom: String,
+    /// CW20 Token
     pub contract: String,
 }
 

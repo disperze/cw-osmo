@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, IbcEndpoint, StdResult, Storage, Uint128};
+use cosmwasm_std::{Addr, IbcEndpoint, Order, StdResult, Storage, Uint128};
 use cw_controllers::Admin;
 use cw_storage_plus::{Item, Map};
 
@@ -98,6 +98,26 @@ pub fn reduce_channel_balance(
         },
     )?;
     Ok(())
+}
+
+pub fn find_external_token(storage: &mut dyn Storage, contract: String) -> StdResult<Option<String>> {
+    let allow: Vec<String> = EXTERNAL_TOKENS
+        .range(storage, None, None, Order::Ascending)
+        .filter(|item| {
+            if let Ok((_, allow)) = item {
+                return allow.contract.eq(&contract);
+            } else {
+                false
+            }
+        })
+        .map(|d| d.map(|(denom, _)| denom))
+        .collect::<StdResult<_>>()?;
+
+    if allow.is_empty() {
+        return Ok(None)
+    }
+
+    return Ok(Some(allow.get(0).unwrap().to_string()))
 }
 
 // this is like increase, but it only "un-subtracts" (= adds) outstanding, not total_sent
