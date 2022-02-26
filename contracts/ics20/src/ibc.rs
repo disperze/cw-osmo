@@ -226,7 +226,7 @@ fn parse_voucher(
             .map_err(|_| ContractError::NoAllowedToken {})?;
 
         let data = Voucher {
-            denom: token.contract.into(),
+            denom: format!("cw20:{}", token.contract.as_str()),
             our_chain: false,
         };
         return Ok(data);
@@ -280,7 +280,7 @@ fn parse_voucher_ack(
         .map_err(|_| ContractError::NoAllowedToken {})?;
 
     Ok(Voucher {
-        denom: token.contract.into(),
+        denom: format!("cw20:{}", token.contract.as_str()),
         our_chain: false,
     })
 }
