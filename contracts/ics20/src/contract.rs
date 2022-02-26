@@ -24,7 +24,7 @@ use crate::state::{
 use cw_utils::{maybe_addr, nonpayable, one_coin};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:cw20-ics20";
+const CONTRACT_NAME: &str = "crates.io:cw20-ics20-2";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]

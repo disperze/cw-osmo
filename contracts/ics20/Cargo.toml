@@ -1,5 +1,5 @@
 [package]
-name = "cw-gamm-ics20"
+name = "cw20-ics20-2"
 version = "0.1.0"
 authors = ["Ethan Frey <ethanfrey@users.noreply.github.com>", "Giancarlos Salas <me@giansalex.dev>"]
 edition = "2018"
