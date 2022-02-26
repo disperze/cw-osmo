@@ -1,11 +1,19 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, SubMsg, Uint128, WasmMsg, Storage};
+use cosmwasm_std::{
+    attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps,
+    DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
+    IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg,
+    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, Storage, SubMsg, Uint128, WasmMsg,
+};
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::state::{reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, REPLY_ARGS, EXTERNAL_TOKENS, CONFIG};
+use crate::state::{
+    reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs, ALLOW_LIST,
+    CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
+};
 use cw20::Cw20ExecuteMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
@@ -217,17 +225,21 @@ fn parse_voucher(
     voucher_denom: String,
     remote_endpoint: &IbcEndpoint,
 ) -> Result<Voucher, ContractError> {
-    let ibc_prefix = format!("{}/{}", &remote_endpoint.port_id, &remote_endpoint.channel_id);
+    let ibc_prefix = format!(
+        "{}/{}",
+        &remote_endpoint.port_id, &remote_endpoint.channel_id
+    );
     if !voucher_denom.starts_with(&ibc_prefix) {
-        let token = EXTERNAL_TOKENS.load(storage, voucher_denom.as_ref())
+        let token = EXTERNAL_TOKENS
+            .load(storage, voucher_denom.as_ref())
             .map_err(|_| ContractError::NoAllowedToken {})?;
 
         let ctr = token.contract;
-        let data = Voucher{
+        let data = Voucher {
             denom: ctr.into(),
             our_chain: false,
         };
-        return Ok(data.clone());
+        return Ok(data);
     }
 
     let split_denom: Vec<&str> = voucher_denom.splitn(3, '/').collect();
@@ -246,7 +258,7 @@ fn parse_voucher(
         });
     }
 
-    Ok(Voucher{
+    Ok(Voucher {
         denom: split_denom[2].to_string(),
         our_chain: true,
     })
@@ -257,9 +269,12 @@ fn parse_voucher_ack(
     voucher_denom: String,
     remote_endpoint: &IbcEndpoint,
 ) -> Result<Voucher, ContractError> {
-    let ibc_prefix = format!("{}/{}", &remote_endpoint.port_id, &remote_endpoint.channel_id);
+    let ibc_prefix = format!(
+        "{}/{}",
+        &remote_endpoint.port_id, &remote_endpoint.channel_id
+    );
     if !voucher_denom.starts_with(&ibc_prefix) {
-        return Ok(Voucher{
+        return Ok(Voucher {
             denom: voucher_denom,
             our_chain: true,
         });
@@ -270,10 +285,11 @@ fn parse_voucher_ack(
         return Err(ContractError::NoForeignTokens {});
     }
 
-    let token = EXTERNAL_TOKENS.load(storage, split_denom[2])
+    let token = EXTERNAL_TOKENS
+        .load(storage, split_denom[2])
         .map_err(|_| ContractError::NoAllowedToken {})?;
 
-    Ok(Voucher{
+    Ok(Voucher {
         denom: token.contract.into(),
         our_chain: false,
     })
@@ -289,7 +305,7 @@ fn do_ibc_packet_receive(
 
     // If the token originated on the remote chain, it looks like "ucosm".
     // If it originated on our chain, it looks like "port/channel/ucosm".
-    let voucher = parse_voucher(deps.storage,msg.denom, &packet.src)?;
+    let voucher = parse_voucher(deps.storage, msg.denom, &packet.src)?;
     let denom = voucher.denom.as_str();
 
     // make sure we have enough balance for this
@@ -423,18 +439,17 @@ fn send_amount(amount: Amount, recipient: String, our_chain: bool) -> CosmosMsg 
         }
         .into(),
         Amount::Cw20(coin) => {
-            let msg =
-                if our_chain {
-                    Cw20ExecuteMsg::Transfer {
-                        recipient,
-                        amount: coin.amount,
-                    }
-                } else {
-                    Cw20ExecuteMsg::Mint {
-                        recipient,
-                        amount: coin.amount,
-                    }
-                };
+            let msg = if our_chain {
+                Cw20ExecuteMsg::Transfer {
+                    recipient,
+                    amount: coin.amount,
+                }
+            } else {
+                Cw20ExecuteMsg::Mint {
+                    recipient,
+                    amount: coin.amount,
+                }
+            };
 
             WasmMsg::Execute {
                 contract_addr: coin.address,

@@ -1,6 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{from_binary, to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, IbcQuery, MessageInfo, Order, PortIdResponse, Response, StdResult, WasmMsg, CosmosMsg, WasmQuery, ContractInfoResponse};
+use cosmwasm_std::{
+    from_binary, to_binary, Addr, Binary, ContractInfoResponse, CosmosMsg, Deps, DepsMut, Env,
+    IbcMsg, IbcQuery, MessageInfo, Order, PortIdResponse, Response, StdResult, WasmMsg, WasmQuery,
+};
 
 use cw2::set_contract_version;
 use cw20::{Cw20Coin, Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -14,7 +17,10 @@ use crate::msg::{
     ChannelResponse, ConfigResponse, ExecuteMsg, ExternalTokenMsg, InitMsg, ListAllowedResponse,
     ListChannelsResponse, ListExternalTokensResponse, PortResponse, QueryMsg, TransferMsg,
 };
-use crate::state::{increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN, ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS, find_external_token};
+use crate::state::{
+    find_external_token, increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN,
+    ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
+};
 use cw_utils::{maybe_addr, nonpayable, one_coin};
 
 // version info for migration info
@@ -105,7 +111,7 @@ pub fn execute_transfer(
     }
 
     // if cw20 token, ensure it is whitelisted
-    let mut denom: String = amount.denom().to_string();
+    let mut denom: String = amount.denom();
     let mut our_chain = true;
     if let Amount::Cw20(coin) = &amount {
         let addr = deps.api.addr_validate(&coin.address)?;
@@ -115,7 +121,9 @@ pub fn execute_transfer(
 
         let token = find_external_token(deps.storage, coin.clone().address)?;
         if let Some(ext_denom) = token {
-            let q = WasmQuery::ContractInfo {contract_addr: env.contract.address.into()};
+            let q = WasmQuery::ContractInfo {
+                contract_addr: env.contract.address.into(),
+            };
             let res: ContractInfoResponse = deps.querier.query(&q.into())?;
 
             denom = format!("{}/{}/{}", res.ibc_port.unwrap(), msg.channel, ext_denom); // ibc voucher
@@ -132,12 +140,7 @@ pub fn execute_transfer(
     let timeout = env.block.time.plus_seconds(timeout_delta);
 
     // build ics20 packet
-    let packet = Ics20Packet::new(
-        amount.amount(),
-        denom,
-        sender.as_ref(),
-        &msg.remote_address,
-    );
+    let packet = Ics20Packet::new(amount.amount(), denom, sender.as_ref(), &msg.remote_address);
     packet.validate()?;
 
     // Update the balance now (optimistically) like ibctransfer modules.
@@ -174,18 +177,21 @@ fn safe_burn(amount: Amount, our_chain: bool) -> Option<CosmosMsg> {
         Amount::Native(_) => None,
         Amount::Cw20(coin) => {
             if our_chain {
-                return None
+                return None;
             }
 
             let msg = Cw20ExecuteMsg::Burn {
                 amount: coin.amount,
             };
 
-            Some(WasmMsg::Execute {
-                contract_addr: coin.address,
-                msg: to_binary(&msg).unwrap(),
-                funds: vec![],
-            }.into())
+            Some(
+                WasmMsg::Execute {
+                    contract_addr: coin.address,
+                    msg: to_binary(&msg).unwrap(),
+                    funds: vec![],
+                }
+                .into(),
+            )
         }
     }
 }
