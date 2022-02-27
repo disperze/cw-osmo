@@ -77,6 +77,12 @@ pub enum ContractError {
 
     #[error("Only accepts external tokens that have been explicitly allowed by governance")]
     NoAllowedToken {},
+
+    #[error("Swap token out not found")]
+    SwapOutputNotFound {},
+
+    #[error("Invalid amount value")]
+    InvalidAmountValue {},
 }
 
 impl From<FromUtf8Error> for ContractError {

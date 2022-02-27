@@ -65,6 +65,21 @@ pub struct ReplyArgs {
     pub our_chain: bool,
 }
 
+pub fn restore_balance_reply(storage: &mut dyn Storage) -> Result<(), ContractError> {
+    let reply_args = REPLY_ARGS.load(storage)?;
+
+    if reply_args.our_chain {
+        undo_reduce_channel_balance(
+            storage,
+            &reply_args.channel,
+            &reply_args.denom,
+            reply_args.amount,
+        )?;
+    }
+
+    Ok(())
+}
+
 pub fn join_ibc_paths(path_a: &str, path_b: &str) -> String {
     format!("{}/{}", path_a, path_b)
 }

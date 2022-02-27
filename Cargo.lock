@@ -251,6 +251,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-controllers",
+ "cw-osmo-proto",
  "cw-storage-plus",
  "cw-utils",
  "cw2",
