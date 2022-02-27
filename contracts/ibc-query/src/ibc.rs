@@ -6,7 +6,7 @@ use cosmwasm_std::{
 use cw_osmo_proto::osmosis::gamm::v1beta1::{QuerySpotPriceRequest, QuerySpotPriceResponse};
 use cw_osmo_proto::query::query_proto;
 
-use crate::ibc_msg::{GammPricePacket, PacketAck, PacketMsg, SpotPriceAck};
+use crate::ibc_msg::{SpotPricePacket, PacketAck, PacketMsg, SpotPriceAck};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
 pub const GAMM_VERSION: &str = "cw-query-1";
@@ -115,7 +115,7 @@ pub fn ibc_packet_ack(
     Ok(IbcBasicResponse::new().add_attribute("action", "ibc_packet_ack"))
 }
 
-fn receive_spot_price(deps: DepsMut, msg: GammPricePacket) -> Result<IbcReceiveResponse, StdError> {
+fn receive_spot_price(deps: DepsMut, msg: SpotPricePacket) -> Result<IbcReceiveResponse, StdError> {
     // CalculateSpotPrice
     let request = QuerySpotPriceRequest {
         pool_id: msg.pool_id.into(),

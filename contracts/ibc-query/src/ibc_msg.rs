@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PacketMsg {
-    SpotPrice(GammPricePacket),
+    SpotPrice(SpotPricePacket),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct GammPricePacket {
+pub struct SpotPricePacket {
     pub pool_id: Uint64,
     pub token_in: String,
     pub token_out: String,
@@ -23,7 +23,7 @@ pub enum PacketAck {
     Error(String),
 }
 
-/// This is the success response we send on ack for PacketMsg::Balance.
+/// This is the success response we send on ack for PacketMsg::SpotPrice.
 /// Just acknowledge success or error
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct SpotPriceAck {
