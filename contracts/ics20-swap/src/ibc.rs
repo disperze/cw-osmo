@@ -1,72 +1,27 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps,
     DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
     IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, Storage, SubMsg, Uint128, WasmMsg,
+    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, Storage, SubMsg, WasmMsg,
 };
 
 use crate::amount::{get_cw20_denom, Amount};
 use crate::error::{ContractError, Never};
+use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher};
 use crate::state::{
-    join_ibc_paths, reduce_channel_balance, undo_reduce_channel_balance, ChannelInfo, ReplyArgs,
+    join_ibc_paths, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs,
     ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
+use cw_osmo_proto::proto_ext::MessageExt;
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
 
-/// The format for sending an ics20 packet.
-/// Proto defined here: https://github.com/cosmos/cosmos-sdk/blob/v0.42.0/proto/ibc/applications/transfer/v1/transfer.proto#L11-L20
-/// This is compatible with the JSON serialization
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
-pub struct Ics20Packet {
-    /// amount of tokens to transfer is encoded as a string, but limited to u64 max
-    pub amount: Uint128,
-    /// the token denomination to be transferred
-    pub denom: String,
-    /// the recipient address on the destination chain
-    pub receiver: String,
-    /// the sender address
-    pub sender: String,
-}
-
-impl Ics20Packet {
-    pub fn new<T: Into<String>>(amount: Uint128, denom: T, sender: &str, receiver: &str) -> Self {
-        Ics20Packet {
-            denom: denom.into(),
-            amount,
-            sender: sender.to_string(),
-            receiver: receiver.to_string(),
-        }
-    }
-
-    pub fn validate(&self) -> Result<(), ContractError> {
-        if self.amount.u128() > (u64::MAX as u128) {
-            Err(ContractError::AmountOverflow {})
-        } else {
-            Ok(())
-        }
-    }
-}
-
-/// This is a generic ICS acknowledgement format.
-/// Proto defined here: https://github.com/cosmos/cosmos-sdk/blob/v0.42.0/proto/ibc/core/channel/v1/channel.proto#L141-L147
-/// This is compatible with the JSON serialization
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-#[serde(rename_all = "snake_case")]
-pub enum Ics20Ack {
-    Result(Binary),
-    Error(String),
-}
-
-pub struct Voucher {
-    pub denom: String,
-    /// denom is from source chain.
-    pub our_chain: bool,
+// create a serialized success message
+fn ack_success_with_body(data: Binary) -> Binary {
+    let res = Ics20Ack::Result(data);
+    to_binary(&res).unwrap()
 }
 
 // create a serialized success message
@@ -82,25 +37,35 @@ fn ack_fail(err: String) -> Binary {
 }
 
 const RECEIVE_ID: u64 = 1337;
+const SWAP_ID: u64 = 0xcb37;
 const ACK_FAILURE_ID: u64 = 0xfa17;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
+        SWAP_ID => match reply.result {
+            ContractResult::Ok(tx) => {
+                let swap_res = parse_swap_out(tx.events);
+                match swap_res {
+                    Ok(ack) => {
+                        let ack = to_binary(&ack).unwrap();
+                        Ok(Response::new().set_data(ack_success_with_body(ack)))
+                    }
+                    Err(err) => {
+                        restore_balance_reply(deps.storage)?;
+                        Ok(Response::new().set_data(ack_fail(err.to_string())))
+                    }
+                }
+            }
+            ContractResult::Err(err) => {
+                restore_balance_reply(deps.storage)?;
+                Ok(Response::new().set_data(ack_fail(err)))
+            }
+        },
         RECEIVE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => {
-                let reply_args = REPLY_ARGS.load(deps.storage)?;
-
-                if reply_args.our_chain {
-                    undo_reduce_channel_balance(
-                        deps.storage,
-                        &reply_args.channel,
-                        &reply_args.denom,
-                        reply_args.amount,
-                    )?;
-                }
-
+                restore_balance_reply(deps.storage)?;
                 Ok(Response::new().set_data(ack_fail(err)))
             }
         },
@@ -194,12 +159,12 @@ pub fn ibc_channel_close(
 /// We should not return an error if possible, but rather an acknowledgement of failure
 pub fn ibc_packet_receive(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, Never> {
     let packet = msg.packet;
 
-    do_ibc_packet_receive(deps, &packet).or_else(|err| {
+    do_ibc_packet_receive(deps, env, &packet).or_else(|err| {
         Ok(IbcReceiveResponse::new()
             .set_ack(ack_fail(err.to_string()))
             .add_attributes(vec![
@@ -283,6 +248,7 @@ fn parse_voucher_ack(
 // this does the work of ibc_packet_receive, we wrap it to turn errors into acknowledgements
 fn do_ibc_packet_receive(
     deps: DepsMut,
+    env: Env,
     packet: &IbcPacket,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let msg: Ics20Packet = from_binary(&packet.data)?;
@@ -306,21 +272,68 @@ fn do_ibc_packet_receive(
         our_chain: voucher.our_chain,
     };
     REPLY_ARGS.save(deps.storage, &reply_args)?;
-
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
-    let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
-    let send = send_amount(to_send, msg.receiver.clone(), voucher.our_chain);
-    let mut submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
-    submsg.gas_limit = gas_limit;
+
+    if let Some(action) = msg.action {
+        match action {
+            OsmoPacket::Swap(swap) => {
+                swap_receive(swap, msg.sender, to_send, env.contract.address.into())
+            }
+        }
+    } else {
+        let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
+        let send = send_amount(to_send, msg.receiver.clone(), voucher.our_chain);
+        let mut submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
+        submsg.gas_limit = gas_limit;
+
+        let res = IbcReceiveResponse::new()
+            .set_ack(ack_success())
+            .add_submessage(submsg)
+            .add_attribute("action", "receive")
+            .add_attribute("sender", msg.sender)
+            .add_attribute("receiver", msg.receiver)
+            .add_attribute("denom", denom)
+            .add_attribute("amount", msg.amount)
+            .add_attribute("success", "true");
+
+        Ok(res)
+    }
+}
+
+fn swap_receive(
+    swap: SwapPacket,
+    sender: String,
+    token_in: Amount,
+    contract: String,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let tx = cw_osmo_proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
+        sender: contract,
+        token_in: Some(cw_osmo_proto::cosmos::base::v1beta1::Coin {
+            denom: token_in.denom(),
+            amount: token_in.amount().to_string(),
+        }),
+        routes: swap
+            .routes
+            .iter()
+            .map(
+                |r| cw_osmo_proto::osmosis::gamm::v1beta1::SwapAmountInRoute {
+                    token_out_denom: r.token_out_denom.to_owned(),
+                    pool_id: r.pool_id.u64(),
+                },
+            )
+            .collect(),
+        token_out_min_amount: swap.token_out_min_amount.to_string(),
+    };
+
+    let submsg = SubMsg::reply_always(tx.to_msg()?, SWAP_ID);
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
         .add_submessage(submsg)
-        .add_attribute("action", "receive")
-        .add_attribute("sender", msg.sender)
-        .add_attribute("receiver", msg.receiver)
-        .add_attribute("denom", denom)
-        .add_attribute("amount", msg.amount)
+        .add_attribute("action", "swap_receive")
+        .add_attribute("sender", sender)
+        .add_attribute("denom", token_in.denom())
+        .add_attribute("amount", token_in.amount())
         .add_attribute("success", "true");
 
     Ok(res)
@@ -364,7 +377,6 @@ pub fn ibc_packet_timeout(
     _env: Env,
     msg: IbcPacketTimeoutMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // TODO: trap error like in receive? (same question as ack above)
     let packet = msg.packet;
     on_packet_failure(deps, packet, "timeout".to_string())
 }
@@ -459,7 +471,7 @@ mod test {
     use crate::contract::{execute, query_channel};
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coins, to_vec, IbcEndpoint, IbcMsg, IbcTimeout, Timestamp};
+    use cosmwasm_std::{coins, to_vec, IbcEndpoint, IbcMsg, IbcTimeout, Timestamp, Uint128};
     use cw20::Cw20ReceiveMsg;
 
     #[test]
@@ -531,6 +543,7 @@ mod test {
             amount: amount.into(),
             sender: "remote-sender".to_string(),
             receiver: receiver.to_string(),
+            action: None,
         };
         print!("Packet denom: {}", &data.denom);
         IbcPacket::new(
@@ -592,6 +605,7 @@ mod test {
             amount: Uint128::new(987654321),
             sender: "local-sender".to_string(),
             receiver: "remote-rcpt".to_string(),
+            action: None,
         };
         let timeout = mock_env().block.time.plus_seconds(DEFAULT_TIMEOUT);
         assert_eq!(

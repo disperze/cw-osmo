@@ -5,7 +5,11 @@ members = ["contracts/*", "packages/*"]
 codegen-units = 1
 incremental = false
 
-[profile.release.package.cw-gamm-ics20]
+[profile.release.package.cw20-ics20-2]
+codegen-units = 1
+incremental = false
+
+[profile.release.package.cw20-ics20-swap]
 codegen-units = 1
 incremental = false
 

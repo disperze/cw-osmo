@@ -11,7 +11,7 @@ use cw_storage_plus::Bound;
 
 use crate::amount::Amount;
 use crate::error::ContractError;
-use crate::ibc::Ics20Packet;
+use crate::ibc_msg::Ics20Packet;
 use crate::msg::{
     AllowMsg, AllowedInfo, AllowedResponse, AllowedTokenInfo, AllowedTokenResponse,
     ChannelResponse, ConfigResponse, ExecuteMsg, ExternalTokenMsg, InitMsg, ListAllowedResponse,
@@ -24,7 +24,7 @@ use crate::state::{
 use cw_utils::{maybe_addr, nonpayable, one_coin};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:cw20-ics20-2";
+const CONTRACT_NAME: &str = "crates.io:cw20-ics20-swap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
