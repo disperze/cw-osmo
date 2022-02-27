@@ -3,10 +3,10 @@ use cosmwasm_std::{
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg,
     IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
 };
-use cw_osmo_proto::osmosis::gamm::v1beta1::{QuerySpotPriceRequest, QuerySpotPriceResponse};
+use cw_osmo_proto::osmosis::gamm::v1beta1::{QuerySpotPriceRequest, QuerySpotPriceResponse, QuerySwapExactAmountInRequest, QuerySwapExactAmountInResponse};
 use cw_osmo_proto::query::query_proto;
 
-use crate::ibc_msg::{GammPricePacket, PacketAck, PacketMsg, SpotPriceAck};
+use crate::ibc_msg::{SpotPricePacket, PacketAck, PacketMsg, SpotPriceAck, EstimateSwapAmountInPacket};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
 pub const GAMM_VERSION: &str = "cw-query-1";
@@ -95,6 +95,7 @@ pub fn ibc_packet_receive(
 
     let result = match packet {
         PacketMsg::SpotPrice(spot_price) => receive_spot_price(deps, spot_price),
+        PacketMsg::EstimateSwapAmountIn(swap_amount) => receive_estimate_swap_amount(deps, swap_amount),
     };
 
     result.or_else(|err| {
@@ -115,7 +116,7 @@ pub fn ibc_packet_ack(
     Ok(IbcBasicResponse::new().add_attribute("action", "ibc_packet_ack"))
 }
 
-fn receive_spot_price(deps: DepsMut, msg: GammPricePacket) -> Result<IbcReceiveResponse, StdError> {
+fn receive_spot_price(deps: DepsMut, msg: SpotPricePacket) -> Result<IbcReceiveResponse, StdError> {
     // CalculateSpotPrice
     let request = QuerySpotPriceRequest {
         pool_id: msg.pool_id.into(),
@@ -132,7 +133,26 @@ fn receive_spot_price(deps: DepsMut, msg: GammPricePacket) -> Result<IbcReceiveR
 
     Ok(IbcReceiveResponse::new()
         .set_ack(ack_success(ibc_ack))
-        .add_attribute("action", "receive_spot_price"))
+        .add_attribute("action", "spot_price"))
+}
+
+fn receive_estimate_swap_amount(deps: DepsMut, msg: EstimateSwapAmountInPacket) -> Result<IbcReceiveResponse, StdError> {
+    let request = QuerySwapExactAmountInRequest {
+        sender: msg.sender,
+        pool_id: msg.pool_id.into(),
+        token_in: msg.token_in,
+        routes: msg.routes.into_iter().map(Into::into).collect(),
+    };
+
+    let query_res: QuerySwapExactAmountInResponse = query_proto(deps.as_ref(), request)?;
+    let ack = SpotPriceAck {
+        price: query_res.token_out_amount,
+    };
+    let ibc_ack = to_binary(&ack)?;
+
+    Ok(IbcReceiveResponse::new()
+        .set_ack(ack_success(ibc_ack))
+        .add_attribute("action", "estimate_swap_amount"))
 }
 
 #[entry_point]

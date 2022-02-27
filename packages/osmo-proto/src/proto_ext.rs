@@ -10,7 +10,7 @@ pub trait MessageExt: prost::Message {
 }
 
 pub trait ProtoUrl {
-    fn path(&self) -> String;
+    fn path(&self) -> &str;
 }
 
 impl<M> MessageExt for M
@@ -28,7 +28,7 @@ where
     fn to_query(&self) -> StdResult<QueryRequest<Empty>> {
         let data = self.to_bytes()?;
         let request: QueryRequest<Empty> = QueryRequest::Stargate {
-            path: self.path(),
+            path: self.path().to_string(),
             data: data.into(),
         };
 
@@ -39,7 +39,7 @@ where
         let data = self.to_bytes()?;
 
         let msg = CosmosMsg::Stargate {
-            type_url: self.path(),
+            type_url: self.path().to_string(),
             value: data.into(),
         };
 
