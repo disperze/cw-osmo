@@ -7,7 +7,7 @@ use cosmwasm_std::{
 
 use crate::amount::{get_cw20_denom, Amount};
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, Voucher};
+use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher};
 use crate::state::{
     join_ibc_paths, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs,
     ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
@@ -272,52 +272,71 @@ fn do_ibc_packet_receive(
         our_chain: voucher.our_chain,
     };
     REPLY_ARGS.save(deps.storage, &reply_args)?;
-
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
-    let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
 
-    let res = IbcReceiveResponse::new()
-        .set_ack(ack_success())
-        .add_attribute("action", "receive")
-        .add_attribute("sender", msg.sender)
-        .add_attribute("receiver", msg.receiver.as_str())
-        .add_attribute("denom", denom)
-        .add_attribute("amount", msg.amount)
-        .add_attribute("success", "true");
-
-    let mut submsg: SubMsg;
     if let Some(action) = msg.action {
         match action {
             OsmoPacket::Swap(swap) => {
-                let tx = cw_osmo_proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
-                    sender: env.contract.address.into(),
-                    token_in: Some(cw_osmo_proto::cosmos::base::v1beta1::Coin {
-                        denom: to_send.denom(),
-                        amount: to_send.amount().to_string(),
-                    }),
-                    routes: swap
-                        .routes
-                        .iter()
-                        .map(
-                            |r| cw_osmo_proto::osmosis::gamm::v1beta1::SwapAmountInRoute {
-                                token_out_denom: r.token_out_denom.to_owned(),
-                                pool_id: r.pool_id.u64(),
-                            },
-                        )
-                        .collect(),
-                    token_out_min_amount: swap.token_out_min_amount.to_string(),
-                };
-
-                submsg = SubMsg::reply_always(tx.to_msg()?, SWAP_ID);
+                swap_receive(swap, msg.sender, to_send, env.contract.address.into())
             }
-        };
+        }
     } else {
-        let send = send_amount(to_send, msg.receiver, voucher.our_chain);
-        submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
+        let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
+        let send = send_amount(to_send, msg.receiver.clone(), voucher.our_chain);
+        let mut submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
         submsg.gas_limit = gas_limit;
-    }
 
-    Ok(res.add_submessage(submsg))
+        let res = IbcReceiveResponse::new()
+            .set_ack(ack_success())
+            .add_submessage(submsg)
+            .add_attribute("action", "receive")
+            .add_attribute("sender", msg.sender)
+            .add_attribute("receiver", msg.receiver)
+            .add_attribute("denom", denom)
+            .add_attribute("amount", msg.amount)
+            .add_attribute("success", "true");
+
+        Ok(res)
+    }
+}
+
+fn swap_receive(
+    swap: SwapPacket,
+    sender: String,
+    token_in: Amount,
+    contract: String,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let tx = cw_osmo_proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
+        sender: contract,
+        token_in: Some(cw_osmo_proto::cosmos::base::v1beta1::Coin {
+            denom: token_in.denom(),
+            amount: token_in.amount().to_string(),
+        }),
+        routes: swap
+            .routes
+            .iter()
+            .map(
+                |r| cw_osmo_proto::osmosis::gamm::v1beta1::SwapAmountInRoute {
+                    token_out_denom: r.token_out_denom.to_owned(),
+                    pool_id: r.pool_id.u64(),
+                },
+            )
+            .collect(),
+        token_out_min_amount: swap.token_out_min_amount.to_string(),
+    };
+
+    let submsg = SubMsg::reply_always(tx.to_msg()?, SWAP_ID);
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_submessage(submsg)
+        .add_attribute("action", "swap_receive")
+        .add_attribute("sender", sender)
+        .add_attribute("denom", token_in.denom())
+        .add_attribute("amount", token_in.amount())
+        .add_attribute("success", "true");
+
+    Ok(res)
 }
 
 fn check_gas_limit(deps: Deps, amount: &Amount) -> Result<Option<u64>, ContractError> {
