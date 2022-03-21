@@ -1,6 +1,4 @@
-use crate::parse::{
-    find_attributes, find_event_type, parse_coin, OSMOSIS_ATTRIBUTE_TOKEN_OUT, OSMOSIS_EVENT_SWAP,
-};
+use crate::parse::{find_attributes, find_event_type, parse_coin};
 use crate::ContractError;
 use cosmwasm_std::{Binary, Event, Uint128, Uint64};
 use schemars::JsonSchema;
@@ -61,6 +59,8 @@ pub struct Voucher {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum OsmoPacket {
     Swap(SwapPacket),
+    Join(JoinPoolPacket),
+    Exit(ExitPoolPacket),
 }
 
 /// Swap Packet
@@ -77,32 +77,48 @@ pub struct SwapAmountInRoute {
     pub token_out_denom: String,
 }
 
-/// This is the success response we send on ack for PacketMsg::Balance.
-/// Just acknowledge success or error
+/// JoinPool Packet
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct SwapAmountInAck {
+pub struct JoinPoolPacket {
+    pub pool_id: Uint64,
+    pub share_out_min_amount: Uint128,
+}
+
+/// JoinPool Packet
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ExitPoolPacket {
+    pub token_out_denom: String,
+    pub token_out_min_amount: Uint128,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct AmountResultAck {
     pub amount: Uint128,
     pub denom: String,
 }
 
-pub fn parse_swap_out(events: Vec<Event>) -> Result<SwapAmountInAck, ContractError> {
-    let event = find_event_type(events, OSMOSIS_EVENT_SWAP);
+pub fn parse_gamm_result(
+    events: Vec<Event>,
+    event: &str,
+    attribute: &str,
+) -> Result<AmountResultAck, ContractError> {
+    let event = find_event_type(events, event);
     if event.is_none() {
-        return Err(ContractError::SwapOutputNotFound {});
+        return Err(ContractError::GammResultNotFound {});
     }
 
-    let values = find_attributes(event.unwrap().attributes, OSMOSIS_ATTRIBUTE_TOKEN_OUT);
+    let values = find_attributes(event.unwrap().attributes, attribute);
     if values.is_empty() {
-        return Err(ContractError::SwapOutputNotFound {});
+        return Err(ContractError::GammResultNotFound {});
     }
 
     let token_out_str = values.last().unwrap();
     let token_out = parse_coin(token_out_str.as_str())?;
 
-    let swap_ack = SwapAmountInAck {
+    let ack = AmountResultAck {
         amount: token_out.amount,
         denom: token_out.denom,
     };
 
-    Ok(swap_ack)
+    Ok(ack)
 }

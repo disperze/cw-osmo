@@ -17,3 +17,15 @@ impl ProtoUrl for MsgSwapExactAmountIn {
         "/osmosis.gamm.v1beta1.MsgSwapExactAmountIn"
     }
 }
+
+impl ProtoUrl for MsgJoinSwapExternAmountIn {
+    fn path(&self) -> &str {
+        "/osmosis.gamm.v1beta1.MsgJoinSwapExternAmountIn"
+    }
+}
+
+impl ProtoUrl for MsgExitSwapShareAmountIn {
+    fn path(&self) -> &str {
+        "/osmosis.gamm.v1beta1.MsgExitSwapShareAmountIn"
+    }
+}
