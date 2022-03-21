@@ -9,7 +9,7 @@ pub struct InitMsg {
     /// Default timeout for ics20 packets, specified in seconds
     pub default_timeout: u64,
     /// who can allow more contracts
-    pub gov_contract: String,
+    pub admin: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -74,5 +74,5 @@ pub struct PortResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ConfigResponse {
     pub default_timeout: u64,
-    pub gov_contract: String,
+    pub admin: String,
 }

@@ -35,7 +35,7 @@ pub fn instantiate(
     };
     CONFIG.save(deps.storage, &cfg)?;
 
-    let admin = deps.api.addr_validate(&msg.gov_contract)?;
+    let admin = deps.api.addr_validate(&msg.admin)?;
     ADMIN.set(deps.branch(), Some(admin))?;
 
     Ok(Response::default())
@@ -168,7 +168,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let admin = ADMIN.get(deps)?.unwrap_or_else(|| Addr::unchecked(""));
     let res = ConfigResponse {
         default_timeout: cfg.default_timeout,
-        gov_contract: admin.into(),
+        admin: admin.into(),
     };
     Ok(res)
 }
