@@ -1,8 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cw20::Cw20ReceiveMsg;
-
 use crate::amount::Amount;
 use crate::state::ChannelInfo;
 
@@ -11,36 +9,14 @@ pub struct InitMsg {
     /// Default timeout for ics20 packets, specified in seconds
     pub default_timeout: u64,
     /// who can allow more contracts
-    pub gov_contract: String,
-    /// initial allowlist - all cw20 tokens we will send must be previously allowed by governance
-    pub allowlist: Vec<AllowMsg>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct AllowMsg {
-    pub contract: String,
-    pub gas_limit: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct ExternalTokenMsg {
-    /// External denom
-    pub denom: String,
-    /// CW20 Token
-    pub contract: String,
+    pub admin: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
-    Receive(Cw20ReceiveMsg),
     /// This allows us to transfer *exactly one* native token
     Transfer(TransferMsg),
-    /// This must be called by gov_contract, will allow a new cw20 token to be sent
-    Allow(AllowMsg),
-    /// This must be called by gov_contract, will allow a new external token to be received
-    AllowExternalToken(ExternalTokenMsg),
     /// Change the admin (must be called by current admin)
     UpdateAdmin { admin: String },
 }
@@ -72,20 +48,6 @@ pub enum QueryMsg {
     Config {},
     /// Return AdminResponse
     Admin {},
-    /// Query if a given cw20 contract is allowed. Returns AllowedResponse
-    Allowed { contract: String },
-    /// Query if a given external token is allowed. Returns AllowedTokenResponse
-    ExternalToken { denom: String },
-    /// List all allowed cw20 contracts. Returns ListAllowedResponse
-    ListAllowed {
-        start_after: Option<String>,
-        limit: Option<u32>,
-    },
-    /// List all allowed external tokens. Returns ListExternalTokensResponse
-    ListExternalTokens {
-        start_after: Option<String>,
-        limit: Option<u32>,
-    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -112,39 +74,5 @@ pub struct PortResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ConfigResponse {
     pub default_timeout: u64,
-    pub gov_contract: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AllowedResponse {
-    pub is_allowed: bool,
-    pub gas_limit: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct ListAllowedResponse {
-    pub allow: Vec<AllowedInfo>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AllowedTokenResponse {
-    pub is_allowed: bool,
-    pub contract: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AllowedInfo {
-    pub contract: String,
-    pub gas_limit: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct ListExternalTokensResponse {
-    pub tokens: Vec<AllowedTokenInfo>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AllowedTokenInfo {
-    pub denom: String,
-    pub contract: String,
+    pub admin: String,
 }

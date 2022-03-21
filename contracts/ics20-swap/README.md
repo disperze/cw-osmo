@@ -4,5 +4,5 @@ Swap assets in osmosis from remote chain.
 
 ## Messages
 
-- `Swap{}`: Make swap transaction in osmosis chain.
+- `Transfer{}`: Transfer native tokens over IBC.
 
