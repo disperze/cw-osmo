@@ -69,6 +69,9 @@ pub enum ContractError {
     #[error("Swap token out not found")]
     SwapOutputNotFound {},
 
+    #[error("Shares out not found")]
+    JoinPoolShareNotFound {},
+
     #[error("Invalid amount value")]
     InvalidAmountValue {},
 }
