@@ -47,9 +47,9 @@ const ACK_FAILURE_ID: u64 = 0xfa17;
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
         RECEIVE_ID => reply_receive(deps, reply),
-        SWAP_ID => reply_swap(deps, reply),
-        JOIN_POOL_ID => reply_join_pool(deps, reply),
-        EXIT_POOL_ID => reply_exit_pool(deps, reply),
+        SWAP_ID => reply_gamm_result(deps, reply, OSMOSIS_EVENT_SWAP, OSMOSIS_ATTRIBUTE_TOKEN_OUT),
+        JOIN_POOL_ID => reply_gamm_result(deps, reply, "coinbase", "amount"),
+        EXIT_POOL_ID => reply_gamm_result(deps, reply, "pool_exited", "tokens_out"),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
@@ -58,76 +58,18 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
     }
 }
 
-pub fn reply_swap(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+pub fn reply_gamm_result(deps: DepsMut, reply: Reply, event: &str, attribute: &str) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            let swap_res = parse_gamm_result(tx.events, OSMOSIS_EVENT_SWAP, OSMOSIS_ATTRIBUTE_TOKEN_OUT);
-            match swap_res {
+            let gamm_res = parse_gamm_result(tx.events, event, attribute);
+            match gamm_res {
                 Ok(ack) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;
-                    // increase swap amount out
+                    // increase gamm amount out
                     increase_channel_balance(
                         deps.storage,
                         &reply_args.channel,
                         &ack.denom,
-                        ack.amount,
-                    )?;
-                    let ack = to_binary(&ack).unwrap();
-                    Ok(Response::new().set_data(ack_success_with_body(ack)))
-                }
-                Err(err) => {
-                    restore_balance_reply(deps.storage)?;
-                    Ok(Response::new().set_data(ack_fail(err.to_string())))
-                }
-            }
-        }
-        ContractResult::Err(err) => {
-            restore_balance_reply(deps.storage)?;
-            Ok(Response::new().set_data(ack_fail(err)))
-        }
-    }
-}
-
-pub fn reply_join_pool(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
-    match reply.result {
-        ContractResult::Ok(tx) => {
-            let share_res = parse_gamm_result(tx.events, "coinbase", "amount");
-            match share_res {
-                Ok(ack) => {
-                    let reply_args = REPLY_ARGS.load(deps.storage)?;
-                    increase_channel_balance(
-                        deps.storage,
-                        &reply_args.channel,
-                        ack.denom.as_str(),
-                        ack.amount,
-                    )?;
-                    let ack = to_binary(&ack).unwrap();
-                    Ok(Response::new().set_data(ack_success_with_body(ack)))
-                }
-                Err(err) => {
-                    restore_balance_reply(deps.storage)?;
-                    Ok(Response::new().set_data(ack_fail(err.to_string())))
-                }
-            }
-        }
-        ContractResult::Err(err) => {
-            restore_balance_reply(deps.storage)?;
-            Ok(Response::new().set_data(ack_fail(err)))
-        }
-    }
-}
-
-pub fn reply_exit_pool(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
-    match reply.result {
-        ContractResult::Ok(tx) => {
-            let share_res = parse_gamm_result(tx.events, "pool_exited", "tokens_out");
-            match share_res {
-                Ok(ack) => {
-                    let reply_args = REPLY_ARGS.load(deps.storage)?;
-                    increase_channel_balance(
-                        deps.storage,
-                        &reply_args.channel,
-                        ack.denom.as_str(),
                         ack.amount,
                     )?;
                     let ack = to_binary(&ack).unwrap();
