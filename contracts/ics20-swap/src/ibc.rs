@@ -14,7 +14,7 @@ use crate::state::{
 };
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
-use crate::parse::{OSMOSIS_ATTRIBUTE_TOKEN_OUT, OSMOSIS_EVENT_SWAP, parse_pool_id};
+use crate::parse::{EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, parse_pool_id, SWAP_ATTR, SWAP_EVENT};
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -47,9 +47,9 @@ const ACK_FAILURE_ID: u64 = 0xfa17;
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
         RECEIVE_ID => reply_receive(deps, reply),
-        SWAP_ID => reply_gamm_result(deps, reply, OSMOSIS_EVENT_SWAP, OSMOSIS_ATTRIBUTE_TOKEN_OUT),
-        JOIN_POOL_ID => reply_gamm_result(deps, reply, "coinbase", "amount"),
-        EXIT_POOL_ID => reply_gamm_result(deps, reply, "pool_exited", "tokens_out"),
+        SWAP_ID => reply_gamm_result(deps, reply, SWAP_EVENT, SWAP_ATTR),
+        JOIN_POOL_ID => reply_gamm_result(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR),
+        EXIT_POOL_ID => reply_gamm_result(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),

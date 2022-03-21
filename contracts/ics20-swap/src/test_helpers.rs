@@ -117,3 +117,49 @@ pub fn swap_events_mock() -> Vec<Event> {
 
     return vec![ev1, ev2];
 }
+
+pub fn join_pool_events_mock() -> Vec<Event> {
+    let mut ev1 = Event::new("pool_joined");
+    ev1.attributes = vec![
+        Attribute::new("module", "gamm"),
+        Attribute::new("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
+        Attribute::new("pool_id", "1"),
+        Attribute::new(
+            "tokens_in",
+            "10000000uosmo",
+        ),
+    ];
+    let mut ev2 = Event::new("coinbase");
+    ev2.attributes = vec![
+        Attribute::new("minter", "osmo1c9y7crgg6y9pfkq0y8mqzknqz84c3etr0kpcvj"),
+        Attribute::new(
+            "amount",
+            "74196993097318119147gamm/pool/1",
+        ),
+    ];
+
+    return vec![ev1, ev2];
+}
+
+pub fn exit_pool_events_mock() -> Vec<Event> {
+    let mut ev1 = Event::new("pool_exited");
+    ev1.attributes = vec![
+        Attribute::new("module", "gamm"),
+        Attribute::new("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
+        Attribute::new("pool_id", "1"),
+        Attribute::new(
+            "tokens_out",
+            "9970022uosmo",
+        ),
+    ];
+    let mut ev2 = Event::new("burn");
+    ev2.attributes = vec![
+        Attribute::new("burner", "osmo1c9y7crgg6y9pfkq0y8mqzknqz84c3etr0kpcvj"),
+        Attribute::new(
+            "amount",
+            "74196993097318119147gamm/pool/1",
+        ),
+    ];
+
+    return vec![ev1, ev2];
+}
