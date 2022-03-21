@@ -1,16 +1,16 @@
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps,
-    DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
-    IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, Storage, SubMsg, WasmMsg,
+    attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut,
+    Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
+    IbcReceiveResponse, Reply, Response, SubMsg, WasmMsg,
 };
 
-use crate::amount::{get_cw20_denom, Amount};
+use crate::amount::Amount;
 use crate::error::{ContractError, Never};
 use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher};
 use crate::state::{
-    increase_channel_balance, join_ibc_paths, reduce_channel_balance, restore_balance_reply,
-    ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
+    increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
+    ReplyArgs, CHANNEL_INFO, CONFIG, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
@@ -185,22 +185,9 @@ pub fn ibc_packet_receive(
 // Returns local denom if the denom is an encoded voucher from the expected endpoint
 // Otherwise, error
 fn parse_voucher(
-    storage: &mut dyn Storage,
     voucher_denom: String,
     remote_endpoint: &IbcEndpoint,
 ) -> Result<Voucher, ContractError> {
-    let ibc_prefix = join_ibc_paths(&remote_endpoint.port_id, &remote_endpoint.channel_id);
-    if !voucher_denom.starts_with(&ibc_prefix) {
-        let token = EXTERNAL_TOKENS
-            .load(storage, voucher_denom.as_ref())
-            .map_err(|_| ContractError::NoAllowedToken {})?;
-
-        let data = Voucher {
-            denom: get_cw20_denom(token.contract.as_str()),
-        };
-        return Ok(data);
-    }
-
     let split_denom: Vec<&str> = voucher_denom.splitn(3, '/').collect();
     if split_denom.len() != 3 {
         return Err(ContractError::NoForeignTokens {});
@@ -222,32 +209,6 @@ fn parse_voucher(
     })
 }
 
-fn parse_voucher_ack(
-    storage: &mut dyn Storage,
-    voucher_denom: String,
-    remote_endpoint: &IbcEndpoint,
-) -> Result<Voucher, ContractError> {
-    let ibc_prefix = join_ibc_paths(&remote_endpoint.port_id, &remote_endpoint.channel_id);
-    if !voucher_denom.starts_with(&ibc_prefix) {
-        return Ok(Voucher {
-            denom: voucher_denom,
-        });
-    }
-
-    let split_denom: Vec<&str> = voucher_denom.splitn(3, '/').collect();
-    if split_denom.len() != 3 {
-        return Err(ContractError::NoForeignTokens {});
-    }
-
-    let token = EXTERNAL_TOKENS
-        .load(storage, split_denom[2])
-        .map_err(|_| ContractError::NoAllowedToken {})?;
-
-    Ok(Voucher {
-        denom: get_cw20_denom(token.contract.as_str()),
-    })
-}
-
 // this does the work of ibc_packet_receive, we wrap it to turn errors into acknowledgements
 fn do_ibc_packet_receive(
     deps: DepsMut,
@@ -259,7 +220,7 @@ fn do_ibc_packet_receive(
 
     // If the token originated on the remote chain, it looks like "ucosm".
     // If it originated on our chain, it looks like "port/channel/ucosm".
-    let voucher = parse_voucher(deps.storage, msg.denom, &packet.src)?;
+    let voucher = parse_voucher(msg.denom, &packet.src)?;
     let denom = voucher.denom.as_str();
 
     reduce_channel_balance(deps.storage, &channel, denom, msg.amount)?;
@@ -280,10 +241,8 @@ fn do_ibc_packet_receive(
             }
         }
     } else {
-        let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
         let send = send_amount(to_send, msg.receiver.clone());
-        let mut submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
-        submsg.gas_limit = gas_limit;
+        let submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
 
         let res = IbcReceiveResponse::new()
             .set_ack(ack_success())
@@ -336,20 +295,6 @@ fn swap_receive(
         .add_attribute("success", "true");
 
     Ok(res)
-}
-
-fn check_gas_limit(deps: Deps, amount: &Amount) -> Result<Option<u64>, ContractError> {
-    match amount {
-        Amount::Cw20(coin) => {
-            // if cw20 token, use the registered gas limit, or error if not whitelisted
-            let addr = deps.api.addr_validate(&coin.address)?;
-            Ok(ALLOW_LIST
-                .may_load(deps.storage, &addr)?
-                .ok_or(ContractError::NotOnAllowList)?
-                .gas_limit)
-        }
-        _ => Ok(None),
-    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -405,16 +350,11 @@ fn on_packet_failure(
 ) -> Result<IbcBasicResponse, ContractError> {
     let msg: Ics20Packet = from_binary(&packet.data)?;
 
-    let voucher = parse_voucher_ack(deps.storage, msg.denom, &packet.src)?;
-    let denom = voucher.denom.as_str();
+    reduce_channel_balance(deps.storage, &packet.src.channel_id, &msg.denom, msg.amount)?;
 
-    reduce_channel_balance(deps.storage, &packet.src.channel_id, denom, msg.amount)?;
-
-    let to_send = Amount::from_parts(denom.to_string(), msg.amount);
-    let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
+    let to_send = Amount::from_parts(msg.denom.clone(), msg.amount);
     let send = send_amount(to_send, msg.sender.clone());
-    let mut submsg = SubMsg::reply_on_error(send, ACK_FAILURE_ID);
-    submsg.gas_limit = gas_limit;
+    let submsg = SubMsg::reply_on_error(send, ACK_FAILURE_ID);
 
     // similar event messages like ibctransfer module
     let res = IbcBasicResponse::new()
@@ -422,7 +362,7 @@ fn on_packet_failure(
         .add_attribute("action", "acknowledge")
         .add_attribute("sender", msg.sender)
         .add_attribute("receiver", msg.receiver)
-        .add_attribute("denom", denom)
+        .add_attribute("denom", msg.denom)
         .add_attribute("amount", msg.amount.to_string())
         .add_attribute("success", "false")
         .add_attribute("error", err);
@@ -533,7 +473,7 @@ mod test {
     #[test]
     fn send_receive_native() {
         let send_channel = "channel-9";
-        let mut deps = setup(&[send_channel], &[]); // TODO: Allow multiple channels
+        let mut deps = setup(&[send_channel]);
 
         let denom = "uatom";
 

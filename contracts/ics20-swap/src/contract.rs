@@ -6,21 +6,16 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
-use cw_storage_plus::Bound;
 
 use crate::amount::Amount;
 use crate::error::ContractError;
 use crate::ibc_msg::Ics20Packet;
 use crate::msg::{
-    AllowMsg, AllowedInfo, AllowedResponse, AllowedTokenInfo, AllowedTokenResponse,
-    ChannelResponse, ConfigResponse, ExecuteMsg, ExternalTokenMsg, InitMsg, ListAllowedResponse,
-    ListChannelsResponse, ListExternalTokensResponse, PortResponse, QueryMsg, TransferMsg,
+    ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, PortResponse,
+    QueryMsg, TransferMsg,
 };
-use crate::state::{
-    increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN, ALLOW_LIST,
-    CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
-};
-use cw_utils::{maybe_addr, one_coin};
+use crate::state::{increase_channel_balance, Config, ADMIN, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
+use cw_utils::one_coin;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-ics20-swap";
@@ -43,15 +38,6 @@ pub fn instantiate(
     let admin = deps.api.addr_validate(&msg.gov_contract)?;
     ADMIN.set(deps.branch(), Some(admin))?;
 
-    // add all allows
-    for allowed in msg.allowlist {
-        let contract = deps.api.addr_validate(&allowed.contract)?;
-        let info = AllowInfo {
-            gas_limit: allowed.gas_limit,
-        };
-        ALLOW_LIST.save(deps.storage, &contract, &info)?;
-    }
-
     Ok(Response::default())
 }
 
@@ -67,8 +53,6 @@ pub fn execute(
             let coin = one_coin(&info)?;
             execute_transfer(deps, env, msg, Amount::Native(coin), info.sender)
         }
-        ExecuteMsg::Allow(allow) => execute_allow(deps, env, info, allow),
-        ExecuteMsg::AllowExternalToken(token) => allow_external_token(deps, env, info, token),
         ExecuteMsg::UpdateAdmin { admin } => {
             let admin = deps.api.addr_validate(&admin)?;
             Ok(ADMIN.execute_update_admin(deps, info, Some(admin))?)
@@ -129,70 +113,6 @@ pub fn execute_transfer(
     Ok(res)
 }
 
-/// The gov contract can allow new contracts, or increase the gas limit on existing contracts.
-/// It cannot block or reduce the limit to avoid forcible sticking tokens in the channel.
-pub fn execute_allow(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    allow: AllowMsg,
-) -> Result<Response, ContractError> {
-    ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
-
-    let contract = deps.api.addr_validate(&allow.contract)?;
-    let set = AllowInfo {
-        gas_limit: allow.gas_limit,
-    };
-    ALLOW_LIST.update(deps.storage, &contract, |old| {
-        if let Some(old) = old {
-            // we must ensure it increases the limit
-            match (old.gas_limit, set.gas_limit) {
-                (None, Some(_)) => return Err(ContractError::CannotLowerGas),
-                (Some(old), Some(new)) if new < old => return Err(ContractError::CannotLowerGas),
-                _ => {}
-            };
-        }
-        Ok(AllowInfo {
-            gas_limit: allow.gas_limit,
-        })
-    })?;
-
-    let gas = if let Some(gas) = allow.gas_limit {
-        gas.to_string()
-    } else {
-        "None".to_string()
-    };
-
-    let res = Response::new()
-        .add_attribute("action", "allow")
-        .add_attribute("contract", allow.contract)
-        .add_attribute("gas_limit", gas);
-    Ok(res)
-}
-
-pub fn allow_external_token(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    allow: ExternalTokenMsg,
-) -> Result<Response, ContractError> {
-    ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
-    if EXTERNAL_TOKENS.has(deps.storage, &allow.denom) {
-        return Err(ContractError::ExternalTokenExists {});
-    }
-
-    let contract = deps.api.addr_validate(&allow.contract)?;
-    let set = ExternalTokenInfo { contract };
-
-    EXTERNAL_TOKENS.save(deps.storage, &allow.denom, &set)?;
-
-    let res = Response::new()
-        .add_attribute("action", "allow_external_token")
-        .add_attribute("denom", allow.denom)
-        .add_attribute("contract", allow.contract);
-    Ok(res)
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -200,14 +120,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::ListChannels {} => to_binary(&query_list(deps)?),
         QueryMsg::Channel { id } => to_binary(&query_channel(deps, id)?),
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
-        QueryMsg::Allowed { contract } => to_binary(&query_allowed(deps, contract)?),
-        QueryMsg::ExternalToken { denom } => to_binary(&query_external_token(deps, denom)?),
-        QueryMsg::ListAllowed { start_after, limit } => {
-            to_binary(&list_allowed(deps, start_after, limit)?)
-        }
-        QueryMsg::ListExternalTokens { start_after, limit } => {
-            to_binary(&list_external_tokens(deps, start_after, limit)?)
-        }
         QueryMsg::Admin {} => to_binary(&ADMIN.query_admin(deps)?),
     }
 }
@@ -261,97 +173,19 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     Ok(res)
 }
 
-fn query_allowed(deps: Deps, contract: String) -> StdResult<AllowedResponse> {
-    let addr = deps.api.addr_validate(&contract)?;
-    let info = ALLOW_LIST.may_load(deps.storage, &addr)?;
-    let res = match info {
-        None => AllowedResponse {
-            is_allowed: false,
-            gas_limit: None,
-        },
-        Some(a) => AllowedResponse {
-            is_allowed: true,
-            gas_limit: a.gas_limit,
-        },
-    };
-    Ok(res)
-}
-
-fn query_external_token(deps: Deps, denom: String) -> StdResult<AllowedTokenResponse> {
-    let info = EXTERNAL_TOKENS.may_load(deps.storage, denom.as_str())?;
-    let res = match info {
-        None => AllowedTokenResponse {
-            is_allowed: false,
-            contract: None,
-        },
-        Some(a) => AllowedTokenResponse {
-            is_allowed: true,
-            contract: Some(a.contract.to_string()),
-        },
-    };
-    Ok(res)
-}
-
-// settings for pagination
-const MAX_LIMIT: u32 = 30;
-const DEFAULT_LIMIT: u32 = 10;
-
-fn list_allowed(
-    deps: Deps,
-    start_after: Option<String>,
-    limit: Option<u32>,
-) -> StdResult<ListAllowedResponse> {
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let addr = maybe_addr(deps.api, start_after)?;
-    let start = addr.as_ref().map(Bound::exclusive);
-
-    let allow = ALLOW_LIST
-        .range(deps.storage, start, None, Order::Ascending)
-        .take(limit)
-        .map(|item| {
-            item.map(|(addr, allow)| AllowedInfo {
-                contract: addr.into(),
-                gas_limit: allow.gas_limit,
-            })
-        })
-        .collect::<StdResult<_>>()?;
-    Ok(ListAllowedResponse { allow })
-}
-
-fn list_external_tokens(
-    deps: Deps,
-    start_after: Option<String>,
-    limit: Option<u32>,
-) -> StdResult<ListExternalTokensResponse> {
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into()));
-
-    let tokens = EXTERNAL_TOKENS
-        .range(deps.storage, start, None, Order::Ascending)
-        .take(limit)
-        .map(|item| {
-            item.map(|(denom, allow)| AllowedTokenInfo {
-                denom,
-                contract: allow.contract.into(),
-            })
-        })
-        .collect::<StdResult<_>>()?;
-    Ok(ListExternalTokensResponse { tokens })
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::test_helpers::*;
 
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coin, coins, CosmosMsg, from_binary, IbcMsg, StdError, Uint128};
+    use cosmwasm_std::{coin, coins, from_binary, CosmosMsg, IbcMsg, StdError, Uint128};
 
     use cw_utils::PaymentError;
 
     #[test]
     fn setup_and_query() {
-        let deps = setup(&["channel-3"], &[]);
+        let deps = setup(&["channel-3"]);
 
         let raw_list = query(deps.as_ref(), mock_env(), QueryMsg::ListChannels {}).unwrap();
         let list_res: ListChannelsResponse = from_binary(&raw_list).unwrap();
@@ -389,7 +223,7 @@ mod test {
     #[test]
     fn proper_checks_on_execute_native() {
         let send_channel = "channel-5";
-        let mut deps = setup(&[send_channel], &[]);
+        let mut deps = setup(&[send_channel]);
 
         let mut transfer = TransferMsg {
             channel: send_channel.to_string(),

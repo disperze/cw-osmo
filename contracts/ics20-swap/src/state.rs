@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, IbcEndpoint, Order, StdResult, Storage, Uint128};
+use cosmwasm_std::{IbcEndpoint, StdResult, Storage, Uint128};
 use cw_controllers::Admin;
 use cw_storage_plus::{Item, Map};
 
@@ -19,11 +19,6 @@ pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
 
 /// indexed by (channel_id, denom) maintaining the balance of the channel in that currency
 pub const CHANNEL_STATE: Map<(&str, &str), ChannelState> = Map::new("channel_state");
-
-/// Every cw20 contract we allow to be sent is stored here, possibly with a gas_limit
-pub const ALLOW_LIST: Map<&Addr, AllowInfo> = Map::new("allow_list");
-
-pub const EXTERNAL_TOKENS: Map<&str, ExternalTokenInfo> = Map::new("external_tokens");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 pub struct ChannelState {
@@ -48,16 +43,6 @@ pub struct ChannelInfo {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AllowInfo {
-    pub gas_limit: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct ExternalTokenInfo {
-    pub contract: Addr,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ReplyArgs {
     pub channel: String,
     pub denom: String,
@@ -75,10 +60,6 @@ pub fn restore_balance_reply(storage: &mut dyn Storage) -> Result<(), ContractEr
     )?;
 
     Ok(())
-}
-
-pub fn join_ibc_paths(path_a: &str, path_b: &str) -> String {
-    format!("{}/{}", path_a, path_b)
 }
 
 pub fn increase_channel_balance(
@@ -116,29 +97,6 @@ pub fn reduce_channel_balance(
         },
     )?;
     Ok(())
-}
-
-pub fn find_external_token(
-    storage: &mut dyn Storage,
-    contract: String,
-) -> StdResult<Option<String>> {
-    let allow: Vec<String> = EXTERNAL_TOKENS
-        .range(storage, None, None, Order::Ascending)
-        .filter(|item| {
-            if let Ok((_, allow)) = item {
-                allow.contract.eq(&contract)
-            } else {
-                false
-            }
-        })
-        .map(|d| d.map(|(denom, _)| denom))
-        .collect::<StdResult<_>>()?;
-
-    if allow.is_empty() {
-        return Ok(None);
-    }
-
-    return Ok(Some(allow.get(0).unwrap().to_string()));
 }
 
 // this is like increase, but it only "un-subtracts" (= adds) outstanding, not total_sent
