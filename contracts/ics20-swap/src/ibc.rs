@@ -8,7 +8,10 @@ use cosmwasm_std::{
 use crate::amount::{get_cw20_denom, Amount};
 use crate::error::{ContractError, Never};
 use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher};
-use crate::state::{join_ibc_paths, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS, increase_channel_balance};
+use crate::state::{
+    increase_channel_balance, join_ibc_paths, reduce_channel_balance, restore_balance_reply,
+    ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
+};
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
 
@@ -46,7 +49,12 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                 match swap_res {
                     Ok(ack) => {
                         let reply_args = REPLY_ARGS.load(deps.storage)?;
-                        increase_channel_balance(deps.storage, &reply_args.channel, &ack.denom, ack.amount)?;
+                        increase_channel_balance(
+                            deps.storage,
+                            &reply_args.channel,
+                            &ack.denom,
+                            ack.amount,
+                        )?;
                         let ack = to_binary(&ack).unwrap();
                         Ok(Response::new().set_data(ack_success_with_body(ack)))
                     }
@@ -453,8 +461,7 @@ mod test {
     use crate::contract::{execute, query_channel};
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coins, to_vec, IbcEndpoint, IbcMsg, IbcTimeout, Timestamp, Uint128};
-    use cw20::Cw20ReceiveMsg;
+    use cosmwasm_std::{coins, to_vec, IbcEndpoint, Timestamp, Uint128};
 
     #[test]
     fn check_ack_json() {
@@ -481,26 +488,6 @@ mod test {
 
         let encoded = String::from_utf8(to_vec(&packet).unwrap()).unwrap();
         assert_eq!(expected, encoded.as_str());
-    }
-
-    fn cw20_payment(
-        amount: u128,
-        address: &str,
-        recipient: &str,
-        gas_limit: Option<u64>,
-    ) -> SubMsg {
-        let msg = Cw20ExecuteMsg::Transfer {
-            recipient: recipient.into(),
-            amount: Uint128::new(amount),
-        };
-        let exec = WasmMsg::Execute {
-            contract_addr: address.into(),
-            msg: to_binary(&msg).unwrap(),
-            funds: vec![],
-        };
-        let mut msg = SubMsg::reply_on_error(exec, RECEIVE_ID);
-        msg.gas_limit = gas_limit;
-        msg
     }
 
     fn native_payment(amount: u128, denom: &str, recipient: &str) -> SubMsg {
@@ -541,93 +528,6 @@ mod test {
             3,
             Timestamp::from_seconds(1665321069).into(),
         )
-    }
-
-    #[test]
-    fn send_receive_cw20() {
-        let send_channel = "channel-9";
-        let cw20_addr = "token-addr";
-        let cw20_denom = "cw20:token-addr";
-        let gas_limit = 1234567;
-        let mut deps = setup(
-            // &["channel-1", "channel-7", send_channel], // TODO: Allow multiple channels.
-            &[send_channel],
-            &[(cw20_addr, gas_limit)],
-        );
-
-        // prepare some mock packets
-        let recv_packet = mock_receive_packet(send_channel, 876543210, cw20_denom, "local-rcpt");
-        let recv_high_packet =
-            mock_receive_packet(send_channel, 1876543210, cw20_denom, "local-rcpt");
-
-        // cannot receive this denom yet
-        let msg = IbcPacketReceiveMsg::new(recv_packet.clone());
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
-        assert!(res.messages.is_empty());
-        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        let no_funds = Ics20Ack::Error(ContractError::InsufficientFunds {}.to_string());
-        assert_eq!(ack, no_funds);
-
-        // we send some cw20 tokens over
-        let transfer = TransferMsg {
-            channel: send_channel.to_string(),
-            remote_address: "remote-rcpt".to_string(),
-            timeout: None,
-        };
-        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
-            sender: "local-sender".to_string(),
-            amount: Uint128::new(987654321),
-            msg: to_binary(&transfer).unwrap(),
-        });
-        let info = mock_info(cw20_addr, &[]);
-        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-        assert_eq!(1, res.messages.len());
-        let expected = Ics20Packet {
-            denom: cw20_denom.into(),
-            amount: Uint128::new(987654321),
-            sender: "local-sender".to_string(),
-            receiver: "remote-rcpt".to_string(),
-            action: None,
-        };
-        let timeout = mock_env().block.time.plus_seconds(DEFAULT_TIMEOUT);
-        assert_eq!(
-            &res.messages[0],
-            &SubMsg::new(IbcMsg::SendPacket {
-                channel_id: send_channel.to_string(),
-                data: to_binary(&expected).unwrap(),
-                timeout: IbcTimeout::with_timestamp(timeout),
-            })
-        );
-
-        // query channel state|_|
-        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
-        assert_eq!(state.balances, vec![Amount::cw20(987654321, cw20_addr)]);
-        assert_eq!(state.total_sent, vec![Amount::cw20(987654321, cw20_addr)]);
-
-        // cannot receive more than we sent
-        let msg = IbcPacketReceiveMsg::new(recv_high_packet);
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
-        assert!(res.messages.is_empty());
-        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        assert_eq!(ack, no_funds);
-
-        // we can receive less than we sent
-        let msg = IbcPacketReceiveMsg::new(recv_packet);
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
-        assert_eq!(1, res.messages.len());
-        assert_eq!(
-            cw20_payment(876543210, cw20_addr, "local-rcpt", Some(gas_limit)),
-            res.messages[0]
-        );
-        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        matches!(ack, Ics20Ack::Result(_));
-
-        // TODO: we need to call the reply block
-
-        // query channel state
-        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
-        assert_eq!(state.balances, vec![Amount::cw20(111111111, cw20_addr)]);
-        assert_eq!(state.total_sent, vec![Amount::cw20(987654321, cw20_addr)]);
     }
 
     #[test]

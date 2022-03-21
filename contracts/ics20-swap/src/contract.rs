@@ -1,12 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, ContractInfoResponse, CosmosMsg, Deps, DepsMut, Env,
-    IbcMsg, IbcQuery, MessageInfo, Order, PortIdResponse, Response, StdResult, WasmMsg, WasmQuery,
+    to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, IbcQuery, MessageInfo, Order,
+    PortIdResponse, Response, StdResult,
 };
 
 use cw2::set_contract_version;
-use cw20::{Cw20Coin, Cw20ReceiveMsg};
 use cw_storage_plus::Bound;
 
 use crate::amount::Amount;
@@ -18,10 +17,10 @@ use crate::msg::{
     ListChannelsResponse, ListExternalTokensResponse, PortResponse, QueryMsg, TransferMsg,
 };
 use crate::state::{
-    find_external_token, increase_channel_balance, join_ibc_paths, AllowInfo, Config,
-    ExternalTokenInfo, ADMIN, ALLOW_LIST, CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
+    increase_channel_balance, AllowInfo, Config, ExternalTokenInfo, ADMIN, ALLOW_LIST,
+    CHANNEL_INFO, CHANNEL_STATE, CONFIG, EXTERNAL_TOKENS,
 };
-use cw_utils::{maybe_addr, nonpayable, one_coin};
+use cw_utils::{maybe_addr, one_coin};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-ics20-swap";
@@ -64,7 +63,6 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
         ExecuteMsg::Transfer(msg) => {
             let coin = one_coin(&info)?;
             execute_transfer(deps, env, msg, Amount::Native(coin), info.sender)
@@ -76,23 +74,6 @@ pub fn execute(
             Ok(ADMIN.execute_update_admin(deps, info, Some(admin))?)
         }
     }
-}
-
-pub fn execute_receive(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    wrapper: Cw20ReceiveMsg,
-) -> Result<Response, ContractError> {
-    nonpayable(&info)?;
-
-    let msg: TransferMsg = from_binary(&wrapper.msg)?;
-    let amount = Amount::Cw20(Cw20Coin {
-        address: info.sender.to_string(),
-        amount: wrapper.amount,
-    });
-    let api = deps.api;
-    execute_transfer(deps, env, msg, amount, api.addr_validate(&wrapper.sender)?)
 }
 
 pub fn execute_transfer(
@@ -110,27 +91,6 @@ pub fn execute_transfer(
         return Err(ContractError::NoSuchChannel { id: msg.channel });
     }
 
-    // if cw20 token, ensure it is whitelisted
-    let mut denom = amount.denom();
-    if let Amount::Cw20(coin) = &amount {
-        let addr = deps.api.addr_validate(&coin.address)?;
-        ALLOW_LIST
-            .may_load(deps.storage, &addr)?
-            .ok_or(ContractError::NotOnAllowList)?;
-
-        let token = find_external_token(deps.storage, coin.clone().address)?;
-        if let Some(ext_denom) = token {
-            // TODO: add port_id to external_token info
-            let q = WasmQuery::ContractInfo {
-                contract_addr: env.contract.address.into(),
-            };
-            let res: ContractInfoResponse = deps.querier.query(&q.into())?;
-            let ibc_prefix = join_ibc_paths(res.ibc_port.unwrap().as_str(), msg.channel.as_str());
-
-            denom = join_ibc_paths(ibc_prefix.as_str(), ext_denom.as_str());
-        }
-    };
-
     // delta from user is in seconds
     let timeout_delta = match msg.timeout {
         Some(t) => t,
@@ -140,7 +100,12 @@ pub fn execute_transfer(
     let timeout = env.block.time.plus_seconds(timeout_delta);
 
     // build ics20 packet
-    let packet = Ics20Packet::new(amount.amount(), denom, sender.as_ref(), &msg.remote_address);
+    let packet = Ics20Packet::new(
+        amount.amount(),
+        amount.denom(),
+        sender.as_ref(),
+        &msg.remote_address,
+    );
     packet.validate()?;
 
     increase_channel_balance(deps.storage, &msg.channel, &amount.denom(), amount.amount())?;
@@ -380,7 +345,7 @@ mod test {
     use crate::test_helpers::*;
 
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coin, coins, CosmosMsg, IbcMsg, StdError, Uint128};
+    use cosmwasm_std::{coin, coins, CosmosMsg, from_binary, IbcMsg, StdError, Uint128};
 
     use cw_utils::PaymentError;
 
@@ -417,7 +382,7 @@ mod test {
         .unwrap_err();
         assert_eq!(
             err,
-            StdError::not_found("cw_gamm_ics20::state::ChannelInfo")
+            StdError::not_found("cw20_ics20_swap::state::ChannelInfo")
         );
     }
 
@@ -479,74 +444,5 @@ mod test {
                 id: "channel-45".to_string()
             }
         );
-    }
-
-    #[test]
-    fn proper_checks_on_execute_cw20() {
-        let send_channel = "channel-15";
-        let cw20_addr = "my-token";
-        let mut deps = setup(&[send_channel], &[(cw20_addr, 123456)]);
-
-        let transfer = TransferMsg {
-            channel: send_channel.to_string(),
-            remote_address: "foreign-address".to_string(),
-            timeout: Some(7777),
-        };
-        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
-            sender: "my-account".into(),
-            amount: Uint128::new(888777666),
-            msg: to_binary(&transfer).unwrap(),
-        });
-
-        // works with proper funds
-        let info = mock_info(cw20_addr, &[]);
-        let res = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
-        assert_eq!(1, res.messages.len());
-        assert_eq!(res.messages[0].gas_limit, None);
-        if let CosmosMsg::Ibc(IbcMsg::SendPacket {
-            channel_id,
-            data,
-            timeout,
-        }) = &res.messages[0].msg
-        {
-            let expected_timeout = mock_env().block.time.plus_seconds(7777);
-            assert_eq!(timeout, &expected_timeout.into());
-            assert_eq!(channel_id.as_str(), send_channel);
-            let msg: Ics20Packet = from_binary(data).unwrap();
-            assert_eq!(msg.amount, Uint128::new(888777666));
-            assert_eq!(msg.denom, format!("cw20:{}", cw20_addr));
-            assert_eq!(msg.sender.as_str(), "my-account");
-            assert_eq!(msg.receiver.as_str(), "foreign-address");
-        } else {
-            panic!("Unexpected return message: {:?}", res.messages[0]);
-        }
-
-        // reject with tokens funds
-        let info = mock_info("foobar", &coins(1234567, "ucosm"));
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Payment(PaymentError::NonPayable {}));
-    }
-
-    #[test]
-    fn execute_cw20_fails_if_not_whitelisted() {
-        let send_channel = "channel-15";
-        let mut deps = setup(&[send_channel], &[]);
-
-        let cw20_addr = "my-token";
-        let transfer = TransferMsg {
-            channel: send_channel.to_string(),
-            remote_address: "foreign-address".to_string(),
-            timeout: Some(7777),
-        };
-        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
-            sender: "my-account".into(),
-            amount: Uint128::new(888777666),
-            msg: to_binary(&transfer).unwrap(),
-        });
-
-        // works with proper funds
-        let info = mock_info(cw20_addr, &[]);
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::NotOnAllowList);
     }
 }

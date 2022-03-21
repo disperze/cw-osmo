@@ -1,8 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cw20::Cw20ReceiveMsg;
-
 use crate::amount::Amount;
 use crate::state::ChannelInfo;
 
@@ -33,8 +31,6 @@ pub struct ExternalTokenMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
-    Receive(Cw20ReceiveMsg),
     /// This allows us to transfer *exactly one* native token
     Transfer(TransferMsg),
     /// This must be called by gov_contract, will allow a new cw20 token to be sent
