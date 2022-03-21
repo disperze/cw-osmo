@@ -43,44 +43,53 @@ const ACK_FAILURE_ID: u64 = 0xfa17;
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
-        SWAP_ID => match reply.result {
-            ContractResult::Ok(tx) => {
-                let swap_res = parse_swap_out(tx.events);
-                match swap_res {
-                    Ok(ack) => {
-                        let reply_args = REPLY_ARGS.load(deps.storage)?;
-                        increase_channel_balance(
-                            deps.storage,
-                            &reply_args.channel,
-                            &ack.denom,
-                            ack.amount,
-                        )?;
-                        let ack = to_binary(&ack).unwrap();
-                        Ok(Response::new().set_data(ack_success_with_body(ack)))
-                    }
-                    Err(err) => {
-                        restore_balance_reply(deps.storage)?;
-                        Ok(Response::new().set_data(ack_fail(err.to_string())))
-                    }
-                }
-            }
-            ContractResult::Err(err) => {
-                restore_balance_reply(deps.storage)?;
-                Ok(Response::new().set_data(ack_fail(err)))
-            }
-        },
-        RECEIVE_ID => match reply.result {
-            ContractResult::Ok(_) => Ok(Response::new()),
-            ContractResult::Err(err) => {
-                restore_balance_reply(deps.storage)?;
-                Ok(Response::new().set_data(ack_fail(err)))
-            }
-        },
+        SWAP_ID => reply_swap(deps, reply),
+        RECEIVE_ID => reply_receive(deps, reply),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
         },
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
+    }
+}
+
+pub fn reply_swap(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(tx) => {
+            let swap_res = parse_swap_out(tx.events);
+            match swap_res {
+                Ok(ack) => {
+                    let reply_args = REPLY_ARGS.load(deps.storage)?;
+                    // increase swap amount out
+                    increase_channel_balance(
+                        deps.storage,
+                        &reply_args.channel,
+                        &ack.denom,
+                        ack.amount,
+                    )?;
+                    let ack = to_binary(&ack).unwrap();
+                    Ok(Response::new().set_data(ack_success_with_body(ack)))
+                }
+                Err(err) => {
+                    restore_balance_reply(deps.storage)?;
+                    Ok(Response::new().set_data(ack_fail(err.to_string())))
+                }
+            }
+        }
+        ContractResult::Err(err) => {
+            restore_balance_reply(deps.storage)?;
+            Ok(Response::new().set_data(ack_fail(err)))
+        }
+    }
+}
+
+pub fn reply_receive(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(_) => Ok(Response::new()),
+        ContractResult::Err(err) => {
+            restore_balance_reply(deps.storage)?;
+            Ok(Response::new().set_data(ack_fail(err)))
+        }
     }
 }
 
