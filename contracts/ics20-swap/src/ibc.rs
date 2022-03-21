@@ -8,10 +8,7 @@ use cosmwasm_std::{
 use crate::amount::{get_cw20_denom, Amount};
 use crate::error::{ContractError, Never};
 use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher};
-use crate::state::{
-    join_ibc_paths, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs,
-    ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS,
-};
+use crate::state::{join_ibc_paths, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs, ALLOW_LIST, CHANNEL_INFO, CONFIG, EXTERNAL_TOKENS, REPLY_ARGS, increase_channel_balance};
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
 
@@ -48,6 +45,8 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                 let swap_res = parse_swap_out(tx.events);
                 match swap_res {
                     Ok(ack) => {
+                        let reply_args = REPLY_ARGS.load(deps.storage)?;
+                        increase_channel_balance(deps.storage, &reply_args.channel, &ack.denom, ack.amount)?;
                         let ack = to_binary(&ack).unwrap();
                         Ok(Response::new().set_data(ack_success_with_body(ack)))
                     }
