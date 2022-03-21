@@ -1,6 +1,4 @@
-use crate::parse::{
-    find_attributes, find_event_type, parse_coin,
-};
+use crate::parse::{find_attributes, find_event_type, parse_coin};
 use crate::ContractError;
 use cosmwasm_std::{Binary, Event, Uint128, Uint64};
 use schemars::JsonSchema;
@@ -99,7 +97,11 @@ pub struct AmountResultAck {
     pub denom: String,
 }
 
-pub fn parse_gamm_result(events: Vec<Event>, event: &str, attribute: &str) -> Result<AmountResultAck, ContractError> {
+pub fn parse_gamm_result(
+    events: Vec<Event>,
+    event: &str,
+    attribute: &str,
+) -> Result<AmountResultAck, ContractError> {
     let event = find_event_type(events, event);
     if event.is_none() {
         return Err(ContractError::GammResultNotFound {});

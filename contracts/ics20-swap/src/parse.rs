@@ -54,7 +54,9 @@ pub fn parse_coin(value: &str) -> Result<Coin, ContractError> {
 pub fn parse_pool_id(denom: &str) -> Result<u64, ContractError> {
     // denom: gamm/pool/1
     let pool_str = denom.trim_start_matches("gamm/pool/");
-    let pool_id = pool_str.parse::<u64>().map_err(|_| ContractError::InvalidLpToken {})?;
+    let pool_id = pool_str
+        .parse::<u64>()
+        .map_err(|_| ContractError::InvalidLpToken {})?;
 
     Ok(pool_id)
 }
@@ -62,10 +64,13 @@ pub fn parse_pool_id(denom: &str) -> Result<u64, ContractError> {
 #[cfg(test)]
 mod test {
     use crate::ibc_msg::parse_gamm_result;
-    use crate::parse::{find_attributes, find_event_type, parse_coin, SWAP_EVENT, SWAP_ATTR, JOIN_POOL_EVENT, JOIN_POOL_ATTR, EXIT_POOL_EVENT, EXIT_POOL_ATTR};
+    use crate::parse::{
+        find_attributes, find_event_type, parse_coin, EXIT_POOL_ATTR, EXIT_POOL_EVENT,
+        JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR, SWAP_EVENT,
+    };
     use crate::test_helpers::{exit_pool_events_mock, join_pool_events_mock, swap_events_mock};
-    use cosmwasm_std::Uint128;
     use crate::ContractError;
+    use cosmwasm_std::Uint128;
 
     #[test]
     fn parse_token_str() {
@@ -110,7 +115,8 @@ mod test {
 
     #[test]
     fn parse_swap_result() {
-        let err_result = parse_gamm_result(join_pool_events_mock(), SWAP_EVENT, SWAP_ATTR).unwrap_err();
+        let err_result =
+            parse_gamm_result(join_pool_events_mock(), SWAP_EVENT, SWAP_ATTR).unwrap_err();
         assert_eq!(ContractError::GammResultNotFound {}, err_result);
 
         let events = swap_events_mock();
@@ -135,10 +141,7 @@ mod test {
         let token = result.unwrap();
 
         assert_eq!(Uint128::new(74196993097318119147), token.amount);
-        assert_eq!(
-            "gamm/pool/1",
-            token.denom
-        );
+        assert_eq!("gamm/pool/1", token.denom);
     }
 
     #[test]
@@ -150,9 +153,6 @@ mod test {
         let token = result.unwrap();
 
         assert_eq!(Uint128::new(9970022), token.amount);
-        assert_eq!(
-            "uosmo",
-            token.denom
-        );
+        assert_eq!("uosmo", token.denom);
     }
 }

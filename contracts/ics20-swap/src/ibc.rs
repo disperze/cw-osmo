@@ -7,14 +7,20 @@ use cosmwasm_std::{
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher, JoinPoolPacket, ExitPoolPacket, parse_gamm_result};
+use crate::ibc_msg::{
+    parse_gamm_result, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket, OsmoPacket,
+    SwapPacket, Voucher,
+};
+use crate::parse::{
+    parse_pool_id, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR,
+    SWAP_EVENT,
+};
 use crate::state::{
     increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
     ReplyArgs, CHANNEL_INFO, CONFIG, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
-use crate::parse::{EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, parse_pool_id, SWAP_ATTR, SWAP_EVENT};
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -58,7 +64,12 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
     }
 }
 
-pub fn reply_gamm_result(deps: DepsMut, reply: Reply, event: &str, attribute: &str) -> Result<Response, ContractError> {
+pub fn reply_gamm_result(
+    deps: DepsMut,
+    reply: Reply,
+    event: &str,
+    attribute: &str,
+) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
             let gamm_res = parse_gamm_result(tx.events, event, attribute);
@@ -252,10 +263,10 @@ fn do_ibc_packet_receive(
         match action {
             OsmoPacket::Swap(swap) => {
                 swap_receive(swap, msg.sender, to_send, env.contract.address.into())
-            },
+            }
             OsmoPacket::Join(join_pool) => {
                 receive_join_pool(join_pool, msg.sender, to_send, env.contract.address.into())
-            },
+            }
             OsmoPacket::Exit(exit_pool) => {
                 receive_exit_pool(exit_pool, msg.sender, to_send, env.contract.address.into())
             }
@@ -330,7 +341,7 @@ fn receive_join_pool(
             amount: token_in.amount().to_string(),
         }),
         pool_id: join_pool.pool_id.u64(),
-        share_out_min_amount: join_pool.share_out_min_amount.to_string()
+        share_out_min_amount: join_pool.share_out_min_amount.to_string(),
     };
 
     let submsg = SubMsg::reply_always(tx.to_msg()?, JOIN_POOL_ID);
@@ -359,7 +370,7 @@ fn receive_exit_pool(
         pool_id,
         token_out_denom: exit_pool.token_out_denom,
         share_in_amount: token_in.amount().to_string(),
-        token_out_min_amount: exit_pool.token_out_min_amount.to_string()
+        token_out_min_amount: exit_pool.token_out_min_amount.to_string(),
     };
 
     let submsg = SubMsg::reply_always(tx.to_msg()?, EXIT_POOL_ID);
