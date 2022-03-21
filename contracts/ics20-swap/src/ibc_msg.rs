@@ -56,8 +56,6 @@ pub enum Ics20Ack {
 
 pub struct Voucher {
     pub denom: String,
-    /// denom is from source chain.
-    pub our_chain: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

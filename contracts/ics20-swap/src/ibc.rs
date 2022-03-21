@@ -189,7 +189,6 @@ fn parse_voucher(
 
         let data = Voucher {
             denom: get_cw20_denom(token.contract.as_str()),
-            our_chain: false,
         };
         return Ok(data);
     }
@@ -212,7 +211,6 @@ fn parse_voucher(
 
     Ok(Voucher {
         denom: split_denom[2].to_string(),
-        our_chain: true,
     })
 }
 
@@ -225,7 +223,6 @@ fn parse_voucher_ack(
     if !voucher_denom.starts_with(&ibc_prefix) {
         return Ok(Voucher {
             denom: voucher_denom,
-            our_chain: true,
         });
     }
 
@@ -240,7 +237,6 @@ fn parse_voucher_ack(
 
     Ok(Voucher {
         denom: get_cw20_denom(token.contract.as_str()),
-        our_chain: false,
     })
 }
 
@@ -258,17 +254,13 @@ fn do_ibc_packet_receive(
     let voucher = parse_voucher(deps.storage, msg.denom, &packet.src)?;
     let denom = voucher.denom.as_str();
 
-    if voucher.our_chain {
-        // make sure we have enough balance for this
-        reduce_channel_balance(deps.storage, &channel, denom, msg.amount)?;
-    }
+    reduce_channel_balance(deps.storage, &channel, denom, msg.amount)?;
 
     // we need to save the data to update the balances in reply
     let reply_args = ReplyArgs {
         channel,
         denom: denom.to_string(),
         amount: msg.amount,
-        our_chain: voucher.our_chain,
     };
     REPLY_ARGS.save(deps.storage, &reply_args)?;
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
@@ -281,7 +273,7 @@ fn do_ibc_packet_receive(
         }
     } else {
         let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
-        let send = send_amount(to_send, msg.receiver.clone(), voucher.our_chain);
+        let send = send_amount(to_send, msg.receiver.clone());
         let mut submsg = SubMsg::reply_on_error(send, RECEIVE_ID);
         submsg.gas_limit = gas_limit;
 
@@ -408,13 +400,11 @@ fn on_packet_failure(
     let voucher = parse_voucher_ack(deps.storage, msg.denom, &packet.src)?;
     let denom = voucher.denom.as_str();
 
-    if voucher.our_chain {
-        reduce_channel_balance(deps.storage, &packet.src.channel_id, denom, msg.amount)?;
-    }
+    reduce_channel_balance(deps.storage, &packet.src.channel_id, denom, msg.amount)?;
 
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
     let gas_limit = check_gas_limit(deps.as_ref(), &to_send)?;
-    let send = send_amount(to_send, msg.sender.clone(), voucher.our_chain);
+    let send = send_amount(to_send, msg.sender.clone());
     let mut submsg = SubMsg::reply_on_error(send, ACK_FAILURE_ID);
     submsg.gas_limit = gas_limit;
 
@@ -432,7 +422,7 @@ fn on_packet_failure(
     Ok(res)
 }
 
-fn send_amount(amount: Amount, recipient: String, our_chain: bool) -> CosmosMsg {
+fn send_amount(amount: Amount, recipient: String) -> CosmosMsg {
     match amount {
         Amount::Native(coin) => BankMsg::Send {
             to_address: recipient,
@@ -440,16 +430,9 @@ fn send_amount(amount: Amount, recipient: String, our_chain: bool) -> CosmosMsg 
         }
         .into(),
         Amount::Cw20(coin) => {
-            let msg = if our_chain {
-                Cw20ExecuteMsg::Transfer {
-                    recipient,
-                    amount: coin.amount,
-                }
-            } else {
-                Cw20ExecuteMsg::Mint {
-                    recipient,
-                    amount: coin.amount,
-                }
+            let msg = Cw20ExecuteMsg::Transfer {
+                recipient,
+                amount: coin.amount,
             };
 
             WasmMsg::Execute {

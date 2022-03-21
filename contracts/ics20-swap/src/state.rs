@@ -62,20 +62,17 @@ pub struct ReplyArgs {
     pub channel: String,
     pub denom: String,
     pub amount: Uint128,
-    pub our_chain: bool,
 }
 
 pub fn restore_balance_reply(storage: &mut dyn Storage) -> Result<(), ContractError> {
     let reply_args = REPLY_ARGS.load(storage)?;
 
-    if reply_args.our_chain {
-        undo_reduce_channel_balance(
-            storage,
-            &reply_args.channel,
-            &reply_args.denom,
-            reply_args.amount,
-        )?;
-    }
+    undo_reduce_channel_balance(
+        storage,
+        &reply_args.channel,
+        &reply_args.denom,
+        reply_args.amount,
+    )?;
 
     Ok(())
 }

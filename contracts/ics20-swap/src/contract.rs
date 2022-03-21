@@ -6,7 +6,7 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
-use cw20::{Cw20Coin, Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw20::{Cw20Coin, Cw20ReceiveMsg};
 use cw_storage_plus::Bound;
 
 use crate::amount::Amount;
@@ -112,7 +112,6 @@ pub fn execute_transfer(
 
     // if cw20 token, ensure it is whitelisted
     let mut denom = amount.denom();
-    let mut our_chain = true;
     if let Amount::Cw20(coin) = &amount {
         let addr = deps.api.addr_validate(&coin.address)?;
         ALLOW_LIST
@@ -129,7 +128,6 @@ pub fn execute_transfer(
             let ibc_prefix = join_ibc_paths(res.ibc_port.unwrap().as_str(), msg.channel.as_str());
 
             denom = join_ibc_paths(ibc_prefix.as_str(), ext_denom.as_str());
-            our_chain = false;
         }
     };
 
@@ -145,12 +143,7 @@ pub fn execute_transfer(
     let packet = Ics20Packet::new(amount.amount(), denom, sender.as_ref(), &msg.remote_address);
     packet.validate()?;
 
-    if our_chain {
-        // Update the balance now (optimistically) like ibctransfer modules.
-        // In on_packet_failure (ack with error message or a timeout), we reduce the balance appropriately.
-        // This means the channel works fine if success acks are not relayed.
-        increase_channel_balance(deps.storage, &msg.channel, &amount.denom(), amount.amount())?;
-    }
+    increase_channel_balance(deps.storage, &msg.channel, &amount.denom(), amount.amount())?;
 
     // prepare ibc message
     let msg = IbcMsg::SendPacket {
@@ -168,36 +161,7 @@ pub fn execute_transfer(
         .add_attribute("denom", &packet.denom)
         .add_attribute("amount", &packet.amount.to_string());
 
-    let burn = safe_burn(amount, our_chain);
-    if let Some(msg) = burn {
-        return Ok(res.add_message(msg));
-    }
-
     Ok(res)
-}
-
-fn safe_burn(amount: Amount, our_chain: bool) -> Option<CosmosMsg> {
-    match amount {
-        Amount::Native(_) => None,
-        Amount::Cw20(coin) => {
-            if our_chain {
-                return None;
-            }
-
-            let msg = Cw20ExecuteMsg::Burn {
-                amount: coin.amount,
-            };
-
-            Some(
-                WasmMsg::Execute {
-                    contract_addr: coin.address,
-                    msg: to_binary(&msg).unwrap(),
-                    funds: vec![],
-                }
-                .into(),
-            )
-        }
-    }
 }
 
 /// The gov contract can allow new contracts, or increase the gas limit on existing contracts.
