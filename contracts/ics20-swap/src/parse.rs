@@ -57,7 +57,7 @@ pub fn parse_pool_id(denom: &str) -> Result<u64, ContractError> {
 
 #[cfg(test)]
 mod test {
-    use crate::ibc_msg::parse_swap_out;
+    use crate::ibc_msg::parse_gamm_result;
     use crate::parse::{
         find_attributes, find_event_type, parse_coin, OSMOSIS_ATTRIBUTE_TOKEN_OUT,
         OSMOSIS_EVENT_SWAP,
@@ -107,9 +107,9 @@ mod test {
     }
 
     #[test]
-    fn parse_swap_output() {
+    fn parse_gamm_result_output() {
         let events = swap_events_mock();
-        let result = parse_swap_out(events);
+        let result = parse_gamm_result(events, OSMOSIS_EVENT_SWAP, OSMOSIS_ATTRIBUTE_TOKEN_OUT);
 
         assert_eq!(true, result.is_ok());
         let token = result.unwrap();

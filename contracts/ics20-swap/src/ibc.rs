@@ -7,14 +7,14 @@ use cosmwasm_std::{
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher, JoinPoolPacket, parse_share_out, ExitPoolPacket, parse_exit_pool_out};
+use crate::ibc_msg::{Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher, JoinPoolPacket, ExitPoolPacket, parse_gamm_result};
 use crate::state::{
     increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
     ReplyArgs, CHANNEL_INFO, CONFIG, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
-use crate::parse::parse_pool_id;
+use crate::parse::{OSMOSIS_ATTRIBUTE_TOKEN_OUT, OSMOSIS_EVENT_SWAP, parse_pool_id};
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -61,7 +61,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
 pub fn reply_swap(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            let swap_res = parse_swap_out(tx.events);
+            let swap_res = parse_gamm_result(tx.events, OSMOSIS_EVENT_SWAP, OSMOSIS_ATTRIBUTE_TOKEN_OUT);
             match swap_res {
                 Ok(ack) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;
@@ -91,7 +91,7 @@ pub fn reply_swap(deps: DepsMut, reply: Reply) -> Result<Response, ContractError
 pub fn reply_join_pool(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            let share_res = parse_share_out(tx.events);
+            let share_res = parse_gamm_result(tx.events, "coinbase", "amount");
             match share_res {
                 Ok(ack) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;
@@ -120,7 +120,7 @@ pub fn reply_join_pool(deps: DepsMut, reply: Reply) -> Result<Response, Contract
 pub fn reply_exit_pool(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            let share_res = parse_exit_pool_out(tx.events);
+            let share_res = parse_gamm_result(tx.events, "pool_exited", "tokens_out");
             match share_res {
                 Ok(ack) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;

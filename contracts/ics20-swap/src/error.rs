@@ -66,14 +66,8 @@ pub enum ContractError {
     #[error("Only the governance contract can do this")]
     Unauthorized,
 
-    #[error("Swap token out not found")]
-    SwapOutputNotFound {},
-
-    #[error("Shares out not found")]
-    JoinPoolShareNotFound {},
-
-    #[error("Exit pool token out not found")]
-    ExitPoolOutputNotFound {},
+    #[error("x/gamm result not found")]
+    GammResultNotFound {},
 
     #[error("Invalid denom for LP token")]
     InvalidLpToken {},

@@ -1,5 +1,5 @@
 use crate::parse::{
-    find_attributes, find_event_type, parse_coin, OSMOSIS_ATTRIBUTE_TOKEN_OUT, OSMOSIS_EVENT_SWAP,
+    find_attributes, find_event_type, parse_coin,
 };
 use crate::ContractError;
 use cosmwasm_std::{Binary, Event, Uint128, Uint64};
@@ -99,37 +99,15 @@ pub struct AmountResultAck {
     pub denom: String,
 }
 
-pub fn parse_swap_out(events: Vec<Event>) -> Result<AmountResultAck, ContractError> {
-    let event = find_event_type(events, OSMOSIS_EVENT_SWAP);
+pub fn parse_gamm_result(events: Vec<Event>, event: &str, attribute: &str) -> Result<AmountResultAck, ContractError> {
+    let event = find_event_type(events, event);
     if event.is_none() {
-        return Err(ContractError::SwapOutputNotFound {});
+        return Err(ContractError::GammResultNotFound {});
     }
 
-    let values = find_attributes(event.unwrap().attributes, OSMOSIS_ATTRIBUTE_TOKEN_OUT);
+    let values = find_attributes(event.unwrap().attributes, attribute);
     if values.is_empty() {
-        return Err(ContractError::SwapOutputNotFound {});
-    }
-
-    let token_out_str = values.last().unwrap();
-    let token_out = parse_coin(token_out_str.as_str())?;
-
-    let swap_ack = AmountResultAck {
-        amount: token_out.amount,
-        denom: token_out.denom,
-    };
-
-    Ok(swap_ack)
-}
-
-pub fn parse_share_out(events: Vec<Event>) -> Result<AmountResultAck, ContractError> {
-    let event = find_event_type(events, "coinbase");
-    if event.is_none() {
-        return Err(ContractError::JoinPoolShareNotFound {});
-    }
-
-    let values = find_attributes(event.unwrap().attributes, "amount");
-    if values.len() != 1 {
-        return Err(ContractError::JoinPoolShareNotFound {});
+        return Err(ContractError::GammResultNotFound {});
     }
 
     let token_out_str = values.last().unwrap();
@@ -141,26 +119,4 @@ pub fn parse_share_out(events: Vec<Event>) -> Result<AmountResultAck, ContractEr
     };
 
     Ok(ack)
-}
-
-pub fn parse_exit_pool_out(events: Vec<Event>) -> Result<AmountResultAck, ContractError> {
-    let event = find_event_type(events, "pool_exited");
-    if event.is_none() {
-        return Err(ContractError::SwapOutputNotFound {});
-    }
-
-    let values = find_attributes(event.unwrap().attributes, "tokens_out");
-    if values.is_empty() {
-        return Err(ContractError::ExitPoolOutputNotFound {});
-    }
-
-    let token_out_str = values.last().unwrap();
-    let token_out = parse_coin(token_out_str.as_str())?;
-
-    let swap_ack = AmountResultAck {
-        amount: token_out.amount,
-        denom: token_out.denom,
-    };
-
-    Ok(swap_ack)
 }
