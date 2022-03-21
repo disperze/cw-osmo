@@ -85,15 +85,13 @@ pub struct JoinPoolPacket {
     pub share_out_min_amount: Uint128,
 }
 
-/// This is the success response we send on ack for PacketMsg::Balance.
-/// Just acknowledge success or error
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct SwapAmountInAck {
+pub struct AmountResultAck {
     pub amount: Uint128,
     pub denom: String,
 }
 
-pub fn parse_swap_out(events: Vec<Event>) -> Result<SwapAmountInAck, ContractError> {
+pub fn parse_swap_out(events: Vec<Event>) -> Result<AmountResultAck, ContractError> {
     let event = find_event_type(events, OSMOSIS_EVENT_SWAP);
     if event.is_none() {
         return Err(ContractError::SwapOutputNotFound {});
@@ -107,7 +105,7 @@ pub fn parse_swap_out(events: Vec<Event>) -> Result<SwapAmountInAck, ContractErr
     let token_out_str = values.last().unwrap();
     let token_out = parse_coin(token_out_str.as_str())?;
 
-    let swap_ack = SwapAmountInAck {
+    let swap_ack = AmountResultAck {
         amount: token_out.amount,
         denom: token_out.denom,
     };
@@ -115,7 +113,7 @@ pub fn parse_swap_out(events: Vec<Event>) -> Result<SwapAmountInAck, ContractErr
     Ok(swap_ack)
 }
 
-pub fn parse_share_out(events: Vec<Event>) -> Result<SwapAmountInAck, ContractError> {
+pub fn parse_share_out(events: Vec<Event>) -> Result<AmountResultAck, ContractError> {
     let event = find_event_type(events, "coinbase");
     if event.is_none() {
         return Err(ContractError::JoinPoolShareNotFound {});
@@ -129,7 +127,7 @@ pub fn parse_share_out(events: Vec<Event>) -> Result<SwapAmountInAck, ContractEr
     let token_out_str = values.last().unwrap();
     let token_out = parse_coin(token_out_str.as_str())?;
 
-    let ack = SwapAmountInAck {
+    let ack = AmountResultAck {
         amount: token_out.amount,
         denom: token_out.denom,
     };
