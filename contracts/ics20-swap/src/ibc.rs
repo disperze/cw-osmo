@@ -7,13 +7,14 @@ use cosmwasm_std::{
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher, JoinPoolPacket, parse_share_out};
+use crate::ibc_msg::{parse_swap_out, Ics20Ack, Ics20Packet, OsmoPacket, SwapPacket, Voucher, JoinPoolPacket, parse_share_out, ExitPoolPacket, parse_exit_pool_out};
 use crate::state::{
     increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
     ReplyArgs, CHANNEL_INFO, CONFIG, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
+use crate::parse::parse_pool_id;
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -39,6 +40,7 @@ fn ack_fail(err: String) -> Binary {
 const RECEIVE_ID: u64 = 1337;
 const SWAP_ID: u64 = 0xcb37;
 const JOIN_POOL_ID: u64 = 0xad54;
+const EXIT_POOL_ID: u64 = 0xfa61;
 const ACK_FAILURE_ID: u64 = 0xfa17;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -47,6 +49,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         RECEIVE_ID => reply_receive(deps, reply),
         SWAP_ID => reply_swap(deps, reply),
         JOIN_POOL_ID => reply_join_pool(deps, reply),
+        EXIT_POOL_ID => reply_exit_pool(deps, reply),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
@@ -89,6 +92,35 @@ pub fn reply_join_pool(deps: DepsMut, reply: Reply) -> Result<Response, Contract
     match reply.result {
         ContractResult::Ok(tx) => {
             let share_res = parse_share_out(tx.events);
+            match share_res {
+                Ok(ack) => {
+                    let reply_args = REPLY_ARGS.load(deps.storage)?;
+                    increase_channel_balance(
+                        deps.storage,
+                        &reply_args.channel,
+                        ack.denom.as_str(),
+                        ack.amount,
+                    )?;
+                    let ack = to_binary(&ack).unwrap();
+                    Ok(Response::new().set_data(ack_success_with_body(ack)))
+                }
+                Err(err) => {
+                    restore_balance_reply(deps.storage)?;
+                    Ok(Response::new().set_data(ack_fail(err.to_string())))
+                }
+            }
+        }
+        ContractResult::Err(err) => {
+            restore_balance_reply(deps.storage)?;
+            Ok(Response::new().set_data(ack_fail(err)))
+        }
+    }
+}
+
+pub fn reply_exit_pool(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(tx) => {
+            let share_res = parse_exit_pool_out(tx.events);
             match share_res {
                 Ok(ack) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;
@@ -281,6 +313,9 @@ fn do_ibc_packet_receive(
             },
             OsmoPacket::Join(join_pool) => {
                 receive_join_pool(join_pool, msg.sender, to_send, env.contract.address.into())
+            },
+            OsmoPacket::Exit(exit_pool) => {
+                receive_exit_pool(exit_pool, msg.sender, to_send, env.contract.address.into())
             }
         }
     } else {
@@ -362,6 +397,35 @@ fn receive_join_pool(
         .set_ack(ack_success())
         .add_submessage(submsg)
         .add_attribute("action", "receive_join_pool")
+        .add_attribute("sender", sender)
+        .add_attribute("denom", token_in.denom())
+        .add_attribute("amount", token_in.amount())
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+fn receive_exit_pool(
+    exit_pool: ExitPoolPacket,
+    sender: String,
+    token_in: Amount,
+    contract: String,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let pool_id = parse_pool_id(token_in.denom().as_str())?;
+    let tx = cw_osmo_proto::osmosis::gamm::v1beta1::MsgExitSwapShareAmountIn {
+        sender: contract,
+        pool_id,
+        token_out_denom: exit_pool.token_out_denom,
+        share_in_amount: token_in.amount().to_string(),
+        token_out_min_amount: exit_pool.token_out_min_amount.to_string()
+    };
+
+    let submsg = SubMsg::reply_always(tx.to_msg()?, EXIT_POOL_ID);
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_submessage(submsg)
+        .add_attribute("action", "receive_exit_pool")
         .add_attribute("sender", sender)
         .add_attribute("denom", token_in.denom())
         .add_attribute("amount", token_in.amount())

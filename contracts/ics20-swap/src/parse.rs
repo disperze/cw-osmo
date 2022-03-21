@@ -47,6 +47,14 @@ pub fn parse_coin(value: &str) -> Result<Coin, ContractError> {
     })
 }
 
+pub fn parse_pool_id(denom: &str) -> Result<u64, ContractError> {
+    // denom: gamm/pool/1
+    let pool_str = denom.trim_start_matches("gamm/pool/");
+    let pool_id = pool_str.parse::<u64>().map_err(|_| ContractError::InvalidLpToken {})?;
+
+    Ok(pool_id)
+}
+
 #[cfg(test)]
 mod test {
     use crate::ibc_msg::parse_swap_out;

@@ -72,6 +72,12 @@ pub enum ContractError {
     #[error("Shares out not found")]
     JoinPoolShareNotFound {},
 
+    #[error("Exit pool token out not found")]
+    ExitPoolOutputNotFound {},
+
+    #[error("Invalid denom for LP token")]
+    InvalidLpToken {},
+
     #[error("Invalid amount value")]
     InvalidAmountValue {},
 }

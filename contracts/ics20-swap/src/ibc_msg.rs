@@ -62,6 +62,7 @@ pub struct Voucher {
 pub enum OsmoPacket {
     Swap(SwapPacket),
     Join(JoinPoolPacket),
+    Exit(ExitPoolPacket),
 }
 
 /// Swap Packet
@@ -83,6 +84,13 @@ pub struct SwapAmountInRoute {
 pub struct JoinPoolPacket {
     pub pool_id: Uint64,
     pub share_out_min_amount: Uint128,
+}
+
+/// JoinPool Packet
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ExitPoolPacket {
+    pub token_out_denom: String,
+    pub token_out_min_amount: Uint128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -133,4 +141,26 @@ pub fn parse_share_out(events: Vec<Event>) -> Result<AmountResultAck, ContractEr
     };
 
     Ok(ack)
+}
+
+pub fn parse_exit_pool_out(events: Vec<Event>) -> Result<AmountResultAck, ContractError> {
+    let event = find_event_type(events, "pool_exited");
+    if event.is_none() {
+        return Err(ContractError::SwapOutputNotFound {});
+    }
+
+    let values = find_attributes(event.unwrap().attributes, "tokens_out");
+    if values.is_empty() {
+        return Err(ContractError::ExitPoolOutputNotFound {});
+    }
+
+    let token_out_str = values.last().unwrap();
+    let token_out = parse_coin(token_out_str.as_str())?;
+
+    let swap_ack = AmountResultAck {
+        amount: token_out.amount,
+        denom: token_out.denom,
+    };
+
+    Ok(swap_ack)
 }
