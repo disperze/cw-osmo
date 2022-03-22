@@ -1,12 +1,12 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
+    entry_point, from_slice, to_binary, Binary, DepsMut, Empty, Env, IbcBasicResponse,
+    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, QueryRequest, StdError,
+    StdResult,
 };
-use cw_osmo_proto::osmosis::gamm::v1beta1::{QuerySpotPriceRequest, QuerySpotPriceResponse, QuerySwapExactAmountInRequest, QuerySwapExactAmountInResponse};
-use cw_osmo_proto::query::query_proto;
+use cw_osmo_proto::query::query_raw;
 
-use crate::ibc_msg::{SpotPricePacket, PacketAck, PacketMsg, SpotPriceAck, EstimateSwapAmountInPacket};
+use crate::ibc_msg::{PacketAck, PacketMsg};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
 pub const GAMM_VERSION: &str = "cw-query-1";
@@ -93,18 +93,22 @@ pub fn ibc_packet_receive(
 ) -> StdResult<IbcReceiveResponse> {
     let packet: PacketMsg = from_slice(&msg.packet.data)?;
 
-    let result = match packet {
-        PacketMsg::SpotPrice(spot_price) => receive_spot_price(deps, spot_price),
-        PacketMsg::EstimateSwapAmountIn(swap_amount) => receive_estimate_swap_amount(deps, swap_amount),
+    let request: QueryRequest<Empty> = QueryRequest::Stargate {
+        path: packet.path,
+        data: packet.data,
     };
 
-    result.or_else(|err| {
-        Ok(IbcReceiveResponse::new()
+    let result = query_raw(deps.as_ref(), request);
+
+    match result {
+        Ok(data) => Ok(IbcReceiveResponse::new()
+            .set_ack(ack_success(data))
+            .add_attribute("action", "receive")),
+        Err(err) => Ok(IbcReceiveResponse::new()
             .set_ack(ack_fail(err.to_string()))
             .add_attribute("action", "receive")
-            .add_attribute("success", "false")
-            .add_attribute("error", err.to_string()))
-    })
+            .add_attribute("error", err.to_string())),
+    }
 }
 
 #[entry_point]
@@ -113,46 +117,7 @@ pub fn ibc_packet_ack(
     _env: Env,
     _msg: IbcPacketAckMsg,
 ) -> StdResult<IbcBasicResponse> {
-    Ok(IbcBasicResponse::new().add_attribute("action", "ibc_packet_ack"))
-}
-
-fn receive_spot_price(deps: DepsMut, msg: SpotPricePacket) -> Result<IbcReceiveResponse, StdError> {
-    // CalculateSpotPrice
-    let request = QuerySpotPriceRequest {
-        pool_id: msg.pool_id.into(),
-        token_in_denom: msg.token_in,
-        token_out_denom: msg.token_out,
-        with_swap_fee: false,
-    };
-
-    let query_res: QuerySpotPriceResponse = query_proto(deps.as_ref(), request)?;
-    let ack = SpotPriceAck {
-        price: query_res.spot_price,
-    };
-    let ibc_ack = to_binary(&ack)?;
-
-    Ok(IbcReceiveResponse::new()
-        .set_ack(ack_success(ibc_ack))
-        .add_attribute("action", "spot_price"))
-}
-
-fn receive_estimate_swap_amount(deps: DepsMut, msg: EstimateSwapAmountInPacket) -> Result<IbcReceiveResponse, StdError> {
-    let request = QuerySwapExactAmountInRequest {
-        sender: msg.sender,
-        pool_id: msg.pool_id.into(),
-        token_in: msg.token_in,
-        routes: msg.routes.into_iter().map(Into::into).collect(),
-    };
-
-    let query_res: QuerySwapExactAmountInResponse = query_proto(deps.as_ref(), request)?;
-    let ack = SpotPriceAck {
-        price: query_res.token_out_amount,
-    };
-    let ibc_ack = to_binary(&ack)?;
-
-    Ok(IbcReceiveResponse::new()
-        .set_ack(ack_success(ibc_ack))
-        .add_attribute("action", "estimate_swap_amount"))
+    Err(StdError::generic_err("cannot receive acknowledgement"))
 }
 
 #[entry_point]
@@ -161,7 +126,7 @@ pub fn ibc_packet_timeout(
     _env: Env,
     _msg: IbcPacketTimeoutMsg,
 ) -> StdResult<IbcBasicResponse> {
-    Ok(IbcBasicResponse::new().add_attribute("action", "ibc_packet_timeout"))
+    Err(StdError::generic_err("cannot cause a packet timeout"))
 }
 
 #[cfg(test)]
