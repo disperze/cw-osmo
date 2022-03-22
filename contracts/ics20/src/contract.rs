@@ -210,6 +210,21 @@ pub fn execute_allow(
 ) -> Result<Response, ContractError> {
     ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
 
+    add_allow_token(deps, allow.clone())?;
+    let gas = if let Some(gas) = allow.gas_limit {
+        gas.to_string()
+    } else {
+        "None".to_string()
+    };
+
+    let res = Response::new()
+        .add_attribute("action", "allow")
+        .add_attribute("contract", allow.contract)
+        .add_attribute("gas_limit", gas);
+    Ok(res)
+}
+
+fn add_allow_token(deps: DepsMut, allow: AllowMsg) -> Result<(), ContractError> {
     let contract = deps.api.addr_validate(&allow.contract)?;
     let set = AllowInfo {
         gas_limit: allow.gas_limit,
@@ -228,17 +243,7 @@ pub fn execute_allow(
         })
     })?;
 
-    let gas = if let Some(gas) = allow.gas_limit {
-        gas.to_string()
-    } else {
-        "None".to_string()
-    };
-
-    let res = Response::new()
-        .add_attribute("action", "allow")
-        .add_attribute("contract", allow.contract)
-        .add_attribute("gas_limit", gas);
-    Ok(res)
+    Ok(())
 }
 
 pub fn allow_external_token(
@@ -256,6 +261,11 @@ pub fn allow_external_token(
     let set = ExternalTokenInfo { contract };
 
     EXTERNAL_TOKENS.save(deps.storage, &allow.denom, &set)?;
+    let set_allow = AllowMsg {
+        contract: allow.contract.to_owned(),
+        gas_limit: None
+    };
+    add_allow_token(deps, set_allow)?;
 
     let res = Response::new()
         .add_attribute("action", "allow_external_token")

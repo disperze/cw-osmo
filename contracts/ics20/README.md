@@ -5,7 +5,7 @@ that extends functionality to receive native tokens from other chains.
 
 ## Messages
 
-- `AllowExternalToken{}`: Register tokens from other chain.
+- `AllowExternalToken{}`: Bind remote token to cw20 token.
 
 
 ## Queries
