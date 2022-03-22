@@ -83,8 +83,8 @@ pub fn reply_gamm_result(
                         &ack.denom,
                         ack.amount,
                     )?;
-                    let ack = to_binary(&ack).unwrap();
-                    Ok(Response::new().set_data(ack_success_with_body(ack)))
+                    let data = to_binary(&ack).unwrap();
+                    Ok(Response::new().set_data(ack_success_with_body(data)))
                 }
                 Err(err) => {
                     restore_balance_reply(deps.storage)?;
@@ -264,10 +264,10 @@ fn do_ibc_packet_receive(
             OsmoPacket::Swap(swap) => {
                 swap_receive(swap, msg.sender, to_send, env.contract.address.into())
             }
-            OsmoPacket::Join(join_pool) => {
+            OsmoPacket::JoinPool(join_pool) => {
                 receive_join_pool(join_pool, msg.sender, to_send, env.contract.address.into())
             }
-            OsmoPacket::Exit(exit_pool) => {
+            OsmoPacket::ExitPool(exit_pool) => {
                 receive_exit_pool(exit_pool, msg.sender, to_send, env.contract.address.into())
             }
         }

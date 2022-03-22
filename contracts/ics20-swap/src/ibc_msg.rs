@@ -59,8 +59,8 @@ pub struct Voucher {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum OsmoPacket {
     Swap(SwapPacket),
-    Join(JoinPoolPacket),
-    Exit(ExitPoolPacket),
+    JoinPool(JoinPoolPacket),
+    ExitPool(ExitPoolPacket),
 }
 
 /// Swap Packet
