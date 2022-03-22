@@ -52,7 +52,7 @@ pub fn ibc_channel_open(_deps: DepsMut, _env: Env, msg: IbcChannelOpenMsg) -> St
 #[entry_point]
 pub fn ibc_channel_connect(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcChannelConnectMsg,
 ) -> StdResult<IbcBasicResponse> {
     let channel = msg.channel();
@@ -60,7 +60,9 @@ pub fn ibc_channel_connect(
     let channel_id = &channel.endpoint.channel_id;
 
     // create an account holder the channel exists (not found if not registered)
-    let data = ChannelData::default();
+    let data = ChannelData {
+        creation_time: env.block.time,
+    };
     CHANNELS_INFO.save(deps.storage, channel_id, &data)?;
 
     Ok(IbcBasicResponse::new()
@@ -197,7 +199,7 @@ mod tests {
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
-        assert_eq!(0, acct.last_update_time.nanos());
+        assert_eq!(0, acct.creation_time.nanos());
 
         // account should be set up
         let q = QueryMsg::Channel {
@@ -205,6 +207,6 @@ mod tests {
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
-        assert_eq!(0, acct.last_update_time.nanos());
+        assert_eq!(0, acct.creation_time.nanos());
     }
 }

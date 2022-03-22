@@ -26,27 +26,27 @@ pub struct ListChannelsResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ChannelInfo {
     pub channel_id: String,
-    pub last_update_time: Timestamp,
+    pub creation_time: Timestamp,
 }
 
 impl ChannelInfo {
     pub fn convert(channel_id: String, input: ChannelData) -> Self {
         ChannelInfo {
             channel_id,
-            last_update_time: input.last_update_time,
+            creation_time: input.creation_time,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ChannelResponse {
-    pub last_update_time: Timestamp,
+    pub creation_time: Timestamp,
 }
 
 impl From<ChannelData> for ChannelResponse {
     fn from(input: ChannelData) -> Self {
         ChannelResponse {
-            last_update_time: input.last_update_time,
+            creation_time: input.creation_time,
         }
     }
 }
