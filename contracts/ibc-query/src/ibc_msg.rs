@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct PacketMsg {
+    /// The unique identifier of this request, as specified by the client
+    pub client_id: Option<String>,
     pub path: String,
     pub data: Binary,
 }
