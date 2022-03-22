@@ -94,6 +94,13 @@ pub fn ibc_packet_receive(
     msg: IbcPacketReceiveMsg,
 ) -> StdResult<IbcReceiveResponse> {
     let packet: PacketMsg = from_slice(&msg.packet.data)?;
+    let allow_res = assert_allowed_path(packet.path.as_str());
+    if let Err(err) = allow_res {
+        return Ok(IbcReceiveResponse::new()
+            .set_ack(ack_fail(err.to_string()))
+            .add_attribute("action", "receive")
+            .add_attribute("error", err.to_string()));
+    }
 
     let request: QueryRequest<Empty> = QueryRequest::Stargate {
         path: packet.path,
@@ -111,6 +118,19 @@ pub fn ibc_packet_receive(
             .add_attribute("action", "receive")
             .add_attribute("error", err.to_string())),
     }
+}
+
+pub fn assert_allowed_path(path: &str) -> StdResult<()> {
+    let deny_paths = vec!["/cosmos.tx.", "/cosmos.base.tendermint."];
+    for deny_path in deny_paths {
+        if path.starts_with(deny_path) {
+            return Err(StdError::generic_err(
+                "path is not allowed from the contract",
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[entry_point]
