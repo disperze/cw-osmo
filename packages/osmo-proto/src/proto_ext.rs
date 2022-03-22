@@ -48,6 +48,5 @@ where
 }
 
 pub fn proto_decode<M: prost::Message + std::default::Default>(data: &[u8]) -> StdResult<M> {
-    prost::Message::decode(data)
-        .map_err(|_| StdError::generic_err("cannot decode proto"))
+    prost::Message::decode(data).map_err(|_| StdError::generic_err("cannot decode proto"))
 }
