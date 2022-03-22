@@ -1,12 +1,12 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
+    entry_point, from_slice, to_binary, Binary, DepsMut, Empty, Env, IbcBasicResponse,
+    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, QueryRequest, StdError,
+    StdResult,
 };
-use cw_osmo_proto::osmosis::gamm::v1beta1::{QuerySpotPriceRequest, QuerySpotPriceResponse, QuerySwapExactAmountInRequest, QuerySwapExactAmountInResponse};
-use cw_osmo_proto::query::query_proto;
+use cw_osmo_proto::query::query_raw;
 
-use crate::ibc_msg::{SpotPricePacket, PacketAck, PacketMsg, SpotPriceAck, EstimateSwapAmountInPacket};
+use crate::ibc_msg::{PacketAck, PacketMsg};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
 pub const GAMM_VERSION: &str = "cw-query-1";
@@ -52,7 +52,7 @@ pub fn ibc_channel_open(_deps: DepsMut, _env: Env, msg: IbcChannelOpenMsg) -> St
 #[entry_point]
 pub fn ibc_channel_connect(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcChannelConnectMsg,
 ) -> StdResult<IbcBasicResponse> {
     let channel = msg.channel();
@@ -60,7 +60,9 @@ pub fn ibc_channel_connect(
     let channel_id = &channel.endpoint.channel_id;
 
     // create an account holder the channel exists (not found if not registered)
-    let data = ChannelData::default();
+    let data = ChannelData {
+        creation_time: env.block.time,
+    };
     CHANNELS_INFO.save(deps.storage, channel_id, &data)?;
 
     Ok(IbcBasicResponse::new()
@@ -92,19 +94,43 @@ pub fn ibc_packet_receive(
     msg: IbcPacketReceiveMsg,
 ) -> StdResult<IbcReceiveResponse> {
     let packet: PacketMsg = from_slice(&msg.packet.data)?;
-
-    let result = match packet {
-        PacketMsg::SpotPrice(spot_price) => receive_spot_price(deps, spot_price),
-        PacketMsg::EstimateSwapAmountIn(swap_amount) => receive_estimate_swap_amount(deps, swap_amount),
-    };
-
-    result.or_else(|err| {
-        Ok(IbcReceiveResponse::new()
+    let allow_res = assert_allowed_path(packet.path.as_str());
+    if let Err(err) = allow_res {
+        return Ok(IbcReceiveResponse::new()
             .set_ack(ack_fail(err.to_string()))
             .add_attribute("action", "receive")
-            .add_attribute("success", "false")
-            .add_attribute("error", err.to_string()))
-    })
+            .add_attribute("error", err.to_string()));
+    }
+
+    let request: QueryRequest<Empty> = QueryRequest::Stargate {
+        path: packet.path,
+        data: packet.data,
+    };
+
+    let result = query_raw(deps.as_ref(), request);
+
+    match result {
+        Ok(data) => Ok(IbcReceiveResponse::new()
+            .set_ack(ack_success(data))
+            .add_attribute("action", "receive")),
+        Err(err) => Ok(IbcReceiveResponse::new()
+            .set_ack(ack_fail(err.to_string()))
+            .add_attribute("action", "receive")
+            .add_attribute("error", err.to_string())),
+    }
+}
+
+pub fn assert_allowed_path(path: &str) -> StdResult<()> {
+    let deny_paths = vec!["/cosmos.tx.", "/cosmos.base.tendermint."];
+    for deny_path in deny_paths {
+        if path.starts_with(deny_path) {
+            return Err(StdError::generic_err(
+                "path is not allowed from the contract",
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[entry_point]
@@ -113,46 +139,7 @@ pub fn ibc_packet_ack(
     _env: Env,
     _msg: IbcPacketAckMsg,
 ) -> StdResult<IbcBasicResponse> {
-    Ok(IbcBasicResponse::new().add_attribute("action", "ibc_packet_ack"))
-}
-
-fn receive_spot_price(deps: DepsMut, msg: SpotPricePacket) -> Result<IbcReceiveResponse, StdError> {
-    // CalculateSpotPrice
-    let request = QuerySpotPriceRequest {
-        pool_id: msg.pool_id.into(),
-        token_in_denom: msg.token_in,
-        token_out_denom: msg.token_out,
-        with_swap_fee: false,
-    };
-
-    let query_res: QuerySpotPriceResponse = query_proto(deps.as_ref(), request)?;
-    let ack = SpotPriceAck {
-        price: query_res.spot_price,
-    };
-    let ibc_ack = to_binary(&ack)?;
-
-    Ok(IbcReceiveResponse::new()
-        .set_ack(ack_success(ibc_ack))
-        .add_attribute("action", "spot_price"))
-}
-
-fn receive_estimate_swap_amount(deps: DepsMut, msg: EstimateSwapAmountInPacket) -> Result<IbcReceiveResponse, StdError> {
-    let request = QuerySwapExactAmountInRequest {
-        sender: msg.sender,
-        pool_id: msg.pool_id.into(),
-        token_in: msg.token_in,
-        routes: msg.routes.into_iter().map(Into::into).collect(),
-    };
-
-    let query_res: QuerySwapExactAmountInResponse = query_proto(deps.as_ref(), request)?;
-    let ack = SpotPriceAck {
-        price: query_res.token_out_amount,
-    };
-    let ibc_ack = to_binary(&ack)?;
-
-    Ok(IbcReceiveResponse::new()
-        .set_ack(ack_success(ibc_ack))
-        .add_attribute("action", "estimate_swap_amount"))
+    Err(StdError::generic_err("cannot receive acknowledgement"))
 }
 
 #[entry_point]
@@ -161,7 +148,7 @@ pub fn ibc_packet_timeout(
     _env: Env,
     _msg: IbcPacketTimeoutMsg,
 ) -> StdResult<IbcBasicResponse> {
-    Ok(IbcBasicResponse::new().add_attribute("action", "ibc_packet_timeout"))
+    Err(StdError::generic_err("cannot cause a packet timeout"))
 }
 
 #[cfg(test)]
@@ -232,7 +219,7 @@ mod tests {
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
-        assert_eq!(0, acct.last_update_time.nanos());
+        assert_eq!(0, acct.creation_time.nanos());
 
         // account should be set up
         let q = QueryMsg::Channel {
@@ -240,6 +227,6 @@ mod tests {
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
-        assert_eq!(0, acct.last_update_time.nanos());
+        assert_eq!(0, acct.creation_time.nanos());
     }
 }

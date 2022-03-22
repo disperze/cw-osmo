@@ -3,7 +3,7 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use cw_osmo_query::ibc_msg::{GammPricePacket, PacketMsg};
+use cw_osmo_query::ibc_msg::PacketMsg;
 use cw_osmo_query::msg::{ChannelResponse, InstantiateMsg, ListChannelsResponse, QueryMsg};
 
 fn main() {
@@ -15,7 +15,6 @@ fn main() {
     export_schema(&schema_for!(InstantiateMsg), &out_dir);
     export_schema(&schema_for!(QueryMsg), &out_dir);
     export_schema(&schema_for!(PacketMsg), &out_dir);
-    export_schema(&schema_for!(GammPricePacket), &out_dir);
     export_schema(&schema_for!(ChannelResponse), &out_dir);
     export_schema(&schema_for!(ListChannelsResponse), &out_dir);
 }
