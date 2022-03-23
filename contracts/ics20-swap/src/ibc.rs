@@ -319,7 +319,7 @@ fn swap_receive(
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
         .add_submessage(submsg)
-        .add_attribute("action", "swap_receive")
+        .add_attribute("action", "receive_swap")
         .add_attribute("sender", sender)
         .add_attribute("denom", token_in.denom())
         .add_attribute("amount", token_in.amount())
