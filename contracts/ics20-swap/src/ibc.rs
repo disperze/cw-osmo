@@ -491,7 +491,7 @@ mod test {
     use crate::contract::{execute, query_channel};
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coins, to_vec, IbcEndpoint, Timestamp, Uint128};
+    use cosmwasm_std::{coins, to_vec, IbcEndpoint, Timestamp, Uint128, Uint64};
 
     #[test]
     fn check_ack_json() {
@@ -515,6 +515,26 @@ mod test {
         );
         // Example message generated from the SDK
         let expected = r#"{"amount":"12345","denom":"ucosm","receiver":"wasm1fucynrfkrt684pm8jrt8la5h2csvs5cnldcgqc","sender":"cosmos1zedxv25ah8fksmg2lzrndrpkvsjqgk4zt5ff7n"}"#;
+
+        let encoded = String::from_utf8(to_vec(&packet).unwrap()).unwrap();
+        assert_eq!(expected, encoded.as_str());
+    }
+
+    #[test]
+    fn check_gamm_packet_json() {
+        let packet = Ics20Packet{
+            sender: "cosmos1zedxv25ah8fksmg2lzrndrpkvsjqgk4zt5ff7n".to_string(),
+            receiver: "wasm1fucynrfkrt684pm8jrt8la5h2csvs5cnldcgqc".to_string(),
+            amount: Uint128::new(12345),
+            denom: "ucosm".to_string(),
+            action: Some(OsmoPacket::JoinPool(JoinPoolPacket {
+                pool_id: Uint64::new(1),
+                share_out_min_amount: Uint128::new(1),
+            }))
+        };
+
+        // Example message generated from the SDK
+        let expected = r#"{"amount":"12345","denom":"ucosm","receiver":"wasm1fucynrfkrt684pm8jrt8la5h2csvs5cnldcgqc","sender":"cosmos1zedxv25ah8fksmg2lzrndrpkvsjqgk4zt5ff7n","action":{"join_pool":{"pool_id":"1","share_out_min_amount":"1"}}}"#;
 
         let encoded = String::from_utf8(to_vec(&packet).unwrap()).unwrap();
         assert_eq!(expected, encoded.as_str());
