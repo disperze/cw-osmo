@@ -90,7 +90,6 @@ pub fn execute_transfer(
         sender.as_ref(),
         &msg.remote_address,
     );
-    packet.validate()?;
 
     increase_channel_balance(deps.storage, &msg.channel, &amount.denom(), amount.amount())?;
 

@@ -32,14 +32,6 @@ impl Ics20Packet {
             action: None,
         }
     }
-
-    pub fn validate(&self) -> Result<(), ContractError> {
-        if self.amount.u128() > (u64::MAX as u128) {
-            Err(ContractError::AmountOverflow {})
-        } else {
-            Ok(())
-        }
-    }
 }
 
 /// This is a generic ICS acknowledgement format.
