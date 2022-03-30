@@ -157,11 +157,8 @@ mod tests {
     use crate::contract::{instantiate, query};
     use crate::msg::{ChannelResponse, InstantiateMsg, QueryMsg};
 
-    use cosmwasm_std::testing::{
-        mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
-        mock_ibc_channel_open_try, mock_info, MockApi, MockQuerier, MockStorage,
-    };
-    use cosmwasm_std::{IbcOrder, OwnedDeps};
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init, mock_ibc_channel_open_try, mock_ibc_packet_ack, mock_ibc_packet_timeout, mock_info, MockApi, MockQuerier, MockStorage};
+    use cosmwasm_std::{IbcAcknowledgement, IbcOrder, OwnedDeps};
 
     const CREATOR: &str = "creator";
 
@@ -227,5 +224,18 @@ mod tests {
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
         assert_eq!(true, acct.creation_time.nanos() > 0);
+    }
+
+    #[test]
+    fn no_ack_packet_allowed() {
+        let mut deps = setup();
+        let channel_id = "channel-1234";
+        connect(deps.as_mut(), channel_id);
+
+        let ack_msg = mock_ibc_packet_ack(channel_id, b"{}", IbcAcknowledgement::new(&[1])).unwrap();
+        ibc_packet_ack(deps.as_mut(), mock_env(), ack_msg).unwrap_err();
+
+        let timeout_msg = mock_ibc_packet_timeout(channel_id, b"{}").unwrap();
+        ibc_packet_timeout(deps.as_mut(), mock_env(), timeout_msg).unwrap_err();
     }
 }
