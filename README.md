@@ -1,4 +1,5 @@
 # GAMM contracts
+[![Contracts](https://github.com/giansalex/cw-osmo/actions/workflows/cw.yml/badge.svg)](https://github.com/giansalex/cw-osmo/actions/workflows/cw.yml)
 
 Cosmwasm contracts to connect Juno and Osmosis zone.
 
