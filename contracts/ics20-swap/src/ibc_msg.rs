@@ -59,7 +59,6 @@ pub enum OsmoPacket {
 /// Swap Packet
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct SwapPacket {
-    pub sender: String,
     pub routes: Vec<SwapAmountInRoute>,
     pub token_out_min_amount: Uint128,
 }

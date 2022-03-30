@@ -36,9 +36,6 @@ pub enum ContractError {
     #[error("Only supports unordered channel")]
     OnlyOrderedChannel {},
 
-    #[error("Only allow one channel")]
-    OnlyOneChannel {},
-
     #[error("Insufficient funds to redeem voucher on channel")]
     InsufficientFunds {},
 

@@ -34,6 +34,7 @@ pub struct ChannelState {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Config {
     pub default_timeout: u64,
+    // Limit one channel, todo: allow external token + cw20 contract by channel
     pub init_channel: bool,
 }
 

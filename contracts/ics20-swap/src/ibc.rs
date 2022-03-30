@@ -17,7 +17,7 @@ use crate::parse::{
 };
 use crate::state::{
     increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
-    ReplyArgs, CHANNEL_INFO, CONFIG, REPLY_ARGS,
+    ReplyArgs, CHANNEL_INFO, REPLY_ARGS,
 };
 use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
@@ -112,16 +112,11 @@ pub fn reply_receive(deps: DepsMut, reply: Reply) -> Result<Response, ContractEr
 #[cfg_attr(not(feature = "library"), entry_point)]
 /// enforces ordering and versioning constraints
 pub fn ibc_channel_open(
-    deps: DepsMut,
+    _deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
 ) -> Result<(), ContractError> {
     enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
-
-    let cfg = CONFIG.load(deps.storage)?;
-    if cfg.init_channel {
-        return Err(ContractError::OnlyOneChannel {});
-    }
 
     Ok(())
 }
@@ -143,10 +138,6 @@ pub fn ibc_channel_connect(
         connection_id: channel.connection_id,
     };
     CHANNEL_INFO.save(deps.storage, &info.id, &info)?;
-    CONFIG.update(deps.storage, |mut cfg| -> Result<_, ContractError> {
-        cfg.init_channel = true;
-        Ok(cfg)
-    })?;
 
     Ok(IbcBasicResponse::default())
 }
@@ -394,9 +385,6 @@ pub fn ibc_packet_ack(
     _env: Env,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // Design decision: should we trap error like in receive?
-    // TODO: unsure... as it is now a failed ack handling would revert the tx and would be
-    // retried again and again. is that good?
     let ics20msg: Ics20Ack = from_binary(&msg.acknowledgement.data)?;
     match ics20msg {
         Ics20Ack::Result(_) => on_packet_success(msg.original_packet),
@@ -522,7 +510,7 @@ mod test {
 
     #[test]
     fn check_gamm_packet_json() {
-        let packet = Ics20Packet{
+        let packet = Ics20Packet {
             sender: "cosmos1zedxv25ah8fksmg2lzrndrpkvsjqgk4zt5ff7n".to_string(),
             receiver: "wasm1fucynrfkrt684pm8jrt8la5h2csvs5cnldcgqc".to_string(),
             amount: Uint128::new(12345),
@@ -530,7 +518,7 @@ mod test {
             action: Some(OsmoPacket::JoinPool(JoinPoolPacket {
                 pool_id: Uint64::new(1),
                 share_out_min_amount: Uint128::new(1),
-            }))
+            })),
         };
 
         // Example message generated from the SDK
@@ -583,7 +571,7 @@ mod test {
     #[test]
     fn send_receive_native() {
         let send_channel = "channel-9";
-        let mut deps = setup(&[send_channel]);
+        let mut deps = setup(&["channel-1", "channel-7", send_channel]);
 
         let denom = "uatom";
 

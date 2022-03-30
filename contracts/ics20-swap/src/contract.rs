@@ -31,7 +31,6 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let cfg = Config {
         default_timeout: msg.default_timeout,
-        init_channel: false,
     };
     CONFIG.save(deps.storage, &cfg)?;
 
@@ -184,13 +183,13 @@ mod test {
 
     #[test]
     fn setup_and_query() {
-        let deps = setup(&["channel-3"]);
+        let deps = setup(&["channel-3", "channel-7"]);
 
         let raw_list = query(deps.as_ref(), mock_env(), QueryMsg::ListChannels {}).unwrap();
         let list_res: ListChannelsResponse = from_binary(&raw_list).unwrap();
-        assert_eq!(1, list_res.channels.len());
+        assert_eq!(2, list_res.channels.len());
         assert_eq!(mock_channel_info("channel-3"), list_res.channels[0]);
-        // assert_eq!(mock_channel_info("channel-7"), list_res.channels[1]);
+        assert_eq!(mock_channel_info("channel-7"), list_res.channels[1]);
 
         let raw_channel = query(
             deps.as_ref(),
