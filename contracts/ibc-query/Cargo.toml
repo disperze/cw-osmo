@@ -3,7 +3,7 @@ name = "cw-ibc-query"
 version = "0.1.0"
 authors = ["Giancarlos Salas <me@giansalex.dev>"]
 edition = "2018"
-description = "IBC queries"
+description = "Contract to allow ibc queries from remote chains."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
