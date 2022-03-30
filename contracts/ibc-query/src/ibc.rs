@@ -1,22 +1,12 @@
-use cosmwasm_std::{entry_point, from_slice, to_binary, Binary, DepsMut, Empty, Env, IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, QueryRequest, StdError, StdResult, IbcChannel};
-use cw_osmo_proto::query::query_raw;
 use crate::error::ContractError;
+use cosmwasm_std::{
+    attr, entry_point, DepsMut, Env, IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg,
+    IbcChannelOpenMsg, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
+    IbcReceiveResponse, StdError, StdResult,
+};
 
-use crate::ibc_msg::{PacketAck, PacketMsg};
+use crate::relay::{ack_fail, enforce_order_and_version, on_recv_packet};
 use crate::state::{ChannelData, CHANNELS_INFO};
-
-pub const QUERY_VERSION: &str = "cw-query-1";
-pub const QUERY_ORDERING: IbcOrder = IbcOrder::Unordered;
-
-fn ack_success(result: Binary) -> Binary {
-    let res = PacketAck::Result(result);
-    to_binary(&res).unwrap()
-}
-
-fn ack_fail(err: String) -> Binary {
-    let res = PacketAck::Error(err);
-    to_binary(&res).unwrap()
-}
 
 #[entry_point]
 pub fn ibc_channel_open(
@@ -49,30 +39,6 @@ pub fn ibc_channel_connect(
         .add_attribute("channel_id", channel_id))
 }
 
-fn enforce_order_and_version(
-    channel: &IbcChannel,
-    counterparty_version: Option<&str>,
-) -> Result<(), ContractError> {
-    if channel.version.as_str() != QUERY_VERSION {
-        return Err(ContractError::InvalidIbcVersion {
-            default_version: QUERY_VERSION.to_string(),
-            version: channel.version.clone(),
-        });
-    }
-    if let Some(version) = counterparty_version {
-        if version != QUERY_VERSION {
-            return Err(ContractError::InvalidIbcVersion {
-                default_version: QUERY_VERSION.to_string(),
-                version: version.to_string(),
-            });
-        }
-    }
-    if channel.order != QUERY_ORDERING {
-        return Err(ContractError::OnlyUnorderedChannel {});
-    }
-    Ok(())
-}
-
 #[entry_point]
 pub fn ibc_channel_close(
     deps: DepsMut,
@@ -96,44 +62,14 @@ pub fn ibc_packet_receive(
     _env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> StdResult<IbcReceiveResponse> {
-    let packet: PacketMsg = from_slice(&msg.packet.data)?;
-    let allow_res = assert_allowed_path(packet.path.as_str());
-    if let Err(err) = allow_res {
-        return Ok(IbcReceiveResponse::new()
+    on_recv_packet(deps, &msg.packet).or_else(|err| {
+        Ok(IbcReceiveResponse::new()
             .set_ack(ack_fail(err.to_string()))
-            .add_attribute("action", "receive")
-            .add_attribute("error", err.to_string()));
-    }
-
-    let request: QueryRequest<Empty> = QueryRequest::Stargate {
-        path: packet.path,
-        data: packet.data,
-    };
-
-    let result = query_raw(deps.as_ref(), request);
-
-    match result {
-        Ok(data) => Ok(IbcReceiveResponse::new()
-            .set_ack(ack_success(data))
-            .add_attribute("action", "receive")),
-        Err(err) => Ok(IbcReceiveResponse::new()
-            .set_ack(ack_fail(err.to_string()))
-            .add_attribute("action", "receive")
-            .add_attribute("error", err.to_string())),
-    }
-}
-
-pub fn assert_allowed_path(path: &str) -> StdResult<()> {
-    let deny_paths = vec!["/cosmos.tx.", "/cosmos.base.tendermint."];
-    for deny_path in deny_paths {
-        if path.starts_with(deny_path) {
-            return Err(StdError::generic_err(
-                "path is not allowed from the contract",
-            ));
-        }
-    }
-
-    Ok(())
+            .add_attributes(vec![
+                attr("action", "receive"),
+                attr("error", err.to_string()),
+            ]))
+    })
 }
 
 #[entry_point]
@@ -160,8 +96,14 @@ mod tests {
     use crate::contract::{instantiate, query};
     use crate::msg::{ChannelResponse, InstantiateMsg, QueryMsg};
 
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init, mock_ibc_channel_open_try, mock_ibc_packet_ack, mock_ibc_packet_timeout, mock_info, MockApi, MockQuerier, MockStorage};
-    use cosmwasm_std::{IbcAcknowledgement, IbcOrder, OwnedDeps};
+    use crate::ibc_msg::PacketMsg;
+    use crate::relay::QUERY_VERSION;
+    use cosmwasm_std::testing::{
+        mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
+        mock_ibc_channel_open_try, mock_ibc_packet_ack, mock_ibc_packet_recv,
+        mock_ibc_packet_timeout, mock_info, MockApi, MockQuerier, MockStorage,
+    };
+    use cosmwasm_std::{from_slice, Binary, IbcAcknowledgement, IbcOrder, OwnedDeps};
 
     const CREATOR: &str = "creator";
 
@@ -235,10 +177,31 @@ mod tests {
         let channel_id = "channel-1234";
         connect(deps.as_mut(), channel_id);
 
-        let ack_msg = mock_ibc_packet_ack(channel_id, b"{}", IbcAcknowledgement::new(&[1])).unwrap();
+        let ack_msg =
+            mock_ibc_packet_ack(channel_id, b"{}", IbcAcknowledgement::new(&[1])).unwrap();
         ibc_packet_ack(deps.as_mut(), mock_env(), ack_msg).unwrap_err();
 
         let timeout_msg = mock_ibc_packet_timeout(channel_id, b"{}").unwrap();
         ibc_packet_timeout(deps.as_mut(), mock_env(), timeout_msg).unwrap_err();
+    }
+
+    #[test]
+    fn rcv_query_packet() {
+        let mut deps = setup();
+        let channel_id = "channel-1234";
+        connect(deps.as_mut(), channel_id);
+
+        let packet = PacketMsg {
+            client_id: None,
+            path: "/osmosis.gamm.v1beta1.Query/SpotPrice".to_string(),
+            data: Binary::from(&[1]),
+        };
+        let rcv_msg = mock_ibc_packet_recv(channel_id, &packet).unwrap();
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), rcv_msg).unwrap();
+
+        let error = res.attributes.iter().find(|r| r.key == "error".to_string());
+        // TODO: Unsupported query type: Stargate
+        assert_eq!("error", error.unwrap().key);
+        assert_eq!(0, res.messages.len());
     }
 }
