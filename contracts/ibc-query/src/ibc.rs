@@ -9,8 +9,8 @@ use cw_osmo_proto::query::query_raw;
 use crate::ibc_msg::{PacketAck, PacketMsg};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
-pub const GAMM_VERSION: &str = "cw-query-1";
-pub const GAMM_ORDERING: IbcOrder = IbcOrder::Unordered;
+pub const QUERY_VERSION: &str = "cw-query-1";
+pub const QUERY_ORDERING: IbcOrder = IbcOrder::Unordered;
 
 fn ack_success(result: Binary) -> Binary {
     let res = PacketAck::Result(result);
@@ -26,22 +26,22 @@ fn ack_fail(err: String) -> Binary {
 pub fn ibc_channel_open(_deps: DepsMut, _env: Env, msg: IbcChannelOpenMsg) -> StdResult<()> {
     let channel = msg.channel();
 
-    if channel.order != GAMM_ORDERING {
+    if channel.order != QUERY_ORDERING {
         return Err(StdError::generic_err("Only supports unordered channels"));
     }
 
-    if channel.version.as_str() != GAMM_VERSION {
+    if channel.version.as_str() != QUERY_VERSION {
         return Err(StdError::generic_err(format!(
             "Must set version to `{}`",
-            GAMM_VERSION
+            QUERY_VERSION
         )));
     }
 
     if let Some(version) = msg.counterparty_version() {
-        if version != GAMM_VERSION {
+        if version != QUERY_VERSION {
             return Err(StdError::generic_err(format!(
                 "Counterparty version must be `{}`",
-                GAMM_VERSION
+                QUERY_VERSION
             )));
         }
     }
@@ -175,13 +175,13 @@ mod tests {
     // save the account (tested in detail in `proper_handshake_flow`)
     fn connect(mut deps: DepsMut, channel_id: &str) {
         let handshake_open =
-            mock_ibc_channel_open_init(channel_id, IbcOrder::Unordered, GAMM_VERSION);
+            mock_ibc_channel_open_init(channel_id, IbcOrder::Unordered, QUERY_VERSION);
         // first we try to open with a valid handshake
         ibc_channel_open(deps.branch(), mock_env(), handshake_open).unwrap();
 
         // then we connect (with counter-party version set)
         let handshake_connect =
-            mock_ibc_channel_connect_ack(channel_id, IbcOrder::Ordered, GAMM_VERSION);
+            mock_ibc_channel_connect_ack(channel_id, IbcOrder::Ordered, QUERY_VERSION);
         let res = ibc_channel_connect(deps.branch(), mock_env(), handshake_connect).unwrap();
 
         assert_eq!(0, res.messages.len());
@@ -191,14 +191,14 @@ mod tests {
     fn enforce_version_in_handshake() {
         let mut deps = setup();
 
-        let wrong_order = mock_ibc_channel_open_try("channel-12", IbcOrder::Ordered, GAMM_VERSION);
+        let wrong_order = mock_ibc_channel_open_try("channel-12", IbcOrder::Ordered, QUERY_VERSION);
         ibc_channel_open(deps.as_mut(), mock_env(), wrong_order).unwrap_err();
 
         let wrong_version = mock_ibc_channel_open_try("channel-12", IbcOrder::Unordered, "reflect");
         ibc_channel_open(deps.as_mut(), mock_env(), wrong_version).unwrap_err();
 
         let valid_handshake =
-            mock_ibc_channel_open_try("channel-12", IbcOrder::Unordered, GAMM_VERSION);
+            mock_ibc_channel_open_try("channel-12", IbcOrder::Unordered, QUERY_VERSION);
         ibc_channel_open(deps.as_mut(), mock_env(), valid_handshake).unwrap();
     }
 
