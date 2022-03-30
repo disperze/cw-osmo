@@ -1,10 +1,6 @@
-use cosmwasm_std::{
-    entry_point, from_slice, to_binary, Binary, DepsMut, Empty, Env, IbcBasicResponse,
-    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, QueryRequest, StdError,
-    StdResult,
-};
+use cosmwasm_std::{entry_point, from_slice, to_binary, Binary, DepsMut, Empty, Env, IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcOrder, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, QueryRequest, StdError, StdResult, IbcChannel};
 use cw_osmo_proto::query::query_raw;
+use crate::error::ContractError;
 
 use crate::ibc_msg::{PacketAck, PacketMsg};
 use crate::state::{ChannelData, CHANNELS_INFO};
@@ -23,28 +19,12 @@ fn ack_fail(err: String) -> Binary {
 }
 
 #[entry_point]
-pub fn ibc_channel_open(_deps: DepsMut, _env: Env, msg: IbcChannelOpenMsg) -> StdResult<()> {
-    let channel = msg.channel();
-
-    if channel.order != QUERY_ORDERING {
-        return Err(StdError::generic_err("Only supports unordered channels"));
-    }
-
-    if channel.version.as_str() != QUERY_VERSION {
-        return Err(StdError::generic_err(format!(
-            "Must set version to `{}`",
-            QUERY_VERSION
-        )));
-    }
-
-    if let Some(version) = msg.counterparty_version() {
-        if version != QUERY_VERSION {
-            return Err(StdError::generic_err(format!(
-                "Counterparty version must be `{}`",
-                QUERY_VERSION
-            )));
-        }
-    }
+pub fn ibc_channel_open(
+    _deps: DepsMut,
+    _env: Env,
+    msg: IbcChannelOpenMsg,
+) -> Result<(), ContractError> {
+    enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
 
     Ok(())
 }
@@ -54,12 +34,11 @@ pub fn ibc_channel_connect(
     deps: DepsMut,
     env: Env,
     msg: IbcChannelConnectMsg,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     let channel = msg.channel();
+    enforce_order_and_version(channel, msg.counterparty_version())?;
 
     let channel_id = &channel.endpoint.channel_id;
-
-    // create an account holder the channel exists (not found if not registered)
     let data = ChannelData {
         creation_time: env.block.time,
     };
@@ -68,6 +47,30 @@ pub fn ibc_channel_connect(
     Ok(IbcBasicResponse::new()
         .add_attribute("action", "ibc_connect")
         .add_attribute("channel_id", channel_id))
+}
+
+fn enforce_order_and_version(
+    channel: &IbcChannel,
+    counterparty_version: Option<&str>,
+) -> Result<(), ContractError> {
+    if channel.version.as_str() != QUERY_VERSION {
+        return Err(ContractError::InvalidIbcVersion {
+            default_version: QUERY_VERSION.to_string(),
+            version: channel.version.clone(),
+        });
+    }
+    if let Some(version) = counterparty_version {
+        if version != QUERY_VERSION {
+            return Err(ContractError::InvalidIbcVersion {
+                default_version: QUERY_VERSION.to_string(),
+                version: version.to_string(),
+            });
+        }
+    }
+    if channel.order != QUERY_ORDERING {
+        return Err(ContractError::OnlyUnorderedChannel {});
+    }
+    Ok(())
 }
 
 #[entry_point]
@@ -181,7 +184,7 @@ mod tests {
 
         // then we connect (with counter-party version set)
         let handshake_connect =
-            mock_ibc_channel_connect_ack(channel_id, IbcOrder::Ordered, QUERY_VERSION);
+            mock_ibc_channel_connect_ack(channel_id, IbcOrder::Unordered, QUERY_VERSION);
         let res = ibc_channel_connect(deps.branch(), mock_env(), handshake_connect).unwrap();
 
         assert_eq!(0, res.messages.len());
