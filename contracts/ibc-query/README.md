@@ -1,28 +1,34 @@
-# IBC gamm contract
+# IBC Query
 
-This is a contract to demonstrate osmosis query price over ibc.
+Contract to allow ibc queries from remote chains.
 
-## Contract
+## IBC Packet
 
-**ExecuteMsg**:
+**PacketMsg**:
+Data packet sent by a blockchain. It contains the following parameters:
 
-- `SpotPrice` - this will send `GammPrice` packet to query spot price in remote osmosis chain 
- and store the info locally
+| Parameter | Type   | Description                       |
+|-----------|--------|-----------------------------------|
+| Path      | string | Service query path                |
+| Data      | string | Protobuf message (base64 encoded) |
 
-Msg example:
+Packet Msg example:
 ```json
 {
-  "spot_price": {
-    "channel": "channel-13",
-    "pool": "2",
-    "token_in": "uosmo",
-    "token_out": "ibc/0F192F25408BEF0845A4EFF1FB52CF4D390C224D21543F30DE84651745A6F9A2",
-    "timeout": 1200
-  }
+  "path": "/osmosis.gamm.v1beta1.Query/SpotPrice",
+  "data": "CMQEEkRpYmMvQkUxQkI0MkQ0QkUz....jY4RDdDNDFEQjRERkNFOTY3OEU4RU="
 }
 ```
 
-**QueryMsg**:
+Packet ACK example:
+```json
+{
+  "result": "ChY5NTUuNjcxNzc5MTY3NDI4NzM4MjAw"
+}
+```
+> return protobuf result (base64 encoded)
+
+## Contract QueryMsg
 
 - `ListAccounts` - to list all accounts tied to open channels. ChannelID,
   account address on the remote chain (if known) and last updated price.

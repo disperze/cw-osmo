@@ -18,10 +18,3 @@ pub enum PacketAck {
     Result(Binary),
     Error(String),
 }
-
-/// This is the success response we send on ack for PacketMsg::SpotPrice.
-/// Just acknowledge success or error
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct SpotPriceAck {
-    pub price: String,
-}
