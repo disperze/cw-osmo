@@ -48,19 +48,6 @@ pub struct ReplyArgs {
     pub amount: Uint128,
 }
 
-pub fn restore_balance_reply(storage: &mut dyn Storage) -> Result<(), ContractError> {
-    let reply_args = REPLY_ARGS.load(storage)?;
-
-    undo_reduce_channel_balance(
-        storage,
-        &reply_args.channel,
-        &reply_args.denom,
-        reply_args.amount,
-    )?;
-
-    Ok(())
-}
-
 pub fn increase_channel_balance(
     storage: &mut dyn Storage,
     channel: &str,

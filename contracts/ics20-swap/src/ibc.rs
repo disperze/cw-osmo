@@ -16,8 +16,8 @@ use crate::parse::{
     SWAP_EVENT,
 };
 use crate::state::{
-    increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
-    ReplyArgs, CHANNEL_INFO, REPLY_ARGS,
+    increase_channel_balance, reduce_channel_balance, ChannelInfo, ReplyArgs, CHANNEL_INFO,
+    REPLY_ARGS,
 };
 use cw_osmo_proto::proto_ext::MessageExt;
 
@@ -51,14 +51,11 @@ const ACK_FAILURE_ID: u64 = 0xfa17;
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
-        RECEIVE_ID => reply_receive(deps, reply),
+        RECEIVE_ID => reply_receive(reply),
         SWAP_ID => reply_gamm_result(deps, reply, SWAP_EVENT, SWAP_ATTR),
         JOIN_POOL_ID => reply_gamm_result(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR),
         EXIT_POOL_ID => reply_gamm_result(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR),
-        ACK_FAILURE_ID => match reply.result {
-            ContractResult::Ok(_) => Ok(Response::new()),
-            ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
-        },
+        ACK_FAILURE_ID => reply_receive(reply),
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
     }
 }
@@ -85,26 +82,17 @@ pub fn reply_gamm_result(
                     let data = to_binary(&ack).unwrap();
                     Ok(Response::new().set_data(ack_success_with_body(data)))
                 }
-                Err(err) => {
-                    restore_balance_reply(deps.storage)?;
-                    Ok(Response::new().set_data(ack_fail(err.to_string())))
-                }
+                Err(err) => Ok(Response::new().set_data(ack_fail(err.to_string()))),
             }
         }
-        ContractResult::Err(err) => {
-            restore_balance_reply(deps.storage)?;
-            Ok(Response::new().set_data(ack_fail(err)))
-        }
+        ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
     }
 }
 
-pub fn reply_receive(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+pub fn reply_receive(reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(_) => Ok(Response::new()),
-        ContractResult::Err(err) => {
-            restore_balance_reply(deps.storage)?;
-            Ok(Response::new().set_data(ack_fail(err)))
-        }
+        ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
     }
 }
 
