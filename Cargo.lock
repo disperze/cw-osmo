@@ -160,16 +160,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cw-osmo-proto"
-version = "0.1.0"
-dependencies = [
- "cosmwasm-std",
- "prost",
- "prost-types",
-]
-
-[[package]]
-name = "cw-osmo-query"
+name = "cw-ibc-query"
 version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
@@ -179,6 +170,15 @@ dependencies = [
  "schemars",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "cw-osmo-proto"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-std",
+ "prost",
+ "prost-types",
 ]
 
 [[package]]
