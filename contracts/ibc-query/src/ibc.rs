@@ -187,7 +187,6 @@ mod tests {
             mock_ibc_channel_connect_ack(channel_id, IbcOrder::Ordered, GAMM_VERSION);
         let res = ibc_channel_connect(deps.branch(), mock_env(), handshake_connect).unwrap();
 
-        // this should send a WhoAmI request, which is received some blocks later
         assert_eq!(0, res.messages.len());
     }
 
@@ -219,7 +218,7 @@ mod tests {
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
-        assert_eq!(0, acct.creation_time.nanos());
+        assert_eq!(true, acct.creation_time.nanos() > 0);
 
         // account should be set up
         let q = QueryMsg::Channel {
@@ -227,6 +226,6 @@ mod tests {
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
         let acct: ChannelResponse = from_slice(&r).unwrap();
-        assert_eq!(0, acct.creation_time.nanos());
+        assert_eq!(true, acct.creation_time.nanos() > 0);
     }
 }
