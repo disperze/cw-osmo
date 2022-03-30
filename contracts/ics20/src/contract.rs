@@ -263,7 +263,7 @@ pub fn allow_external_token(
     EXTERNAL_TOKENS.save(deps.storage, &allow.denom, &set)?;
     let set_allow = AllowMsg {
         contract: allow.contract.to_owned(),
-        gas_limit: None
+        gas_limit: None,
     };
     add_allow_token(deps, set_allow)?;
 
@@ -461,10 +461,7 @@ mod test {
             },
         )
         .unwrap_err();
-        assert_eq!(
-            err,
-            StdError::not_found("cw_gamm_ics20::state::ChannelInfo")
-        );
+        assert_eq!(err, StdError::not_found("cw20_ics20_2::state::ChannelInfo"));
     }
 
     #[test]
