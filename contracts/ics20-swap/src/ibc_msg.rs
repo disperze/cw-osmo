@@ -56,6 +56,8 @@ pub enum OsmoPacket {
     ExitPool(ExitPoolPacket),
     LockupAccount {},
     Lock(LockPacket),
+    Claim(ClaimPacket),
+    Unlock(UnlockPacket),
 }
 
 /// Swap Packet
@@ -86,13 +88,18 @@ pub struct ExitPoolPacket {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct LockAccount {
+pub struct LockPacket {
     pub duration: Uint64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct LockPacket {
-    pub duration: Uint64,
+pub struct ClaimPacket {
+    pub denom: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct UnlockPacket {
+    pub id: Uint64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
