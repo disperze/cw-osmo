@@ -2,7 +2,7 @@ use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut,
     Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
     IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
-    IbcReceiveResponse, Reply, Response, SubMsg, WasmMsg,
+    IbcReceiveResponse, Reply, Response, SubMsg,
 };
 
 use crate::amount::Amount;
@@ -19,7 +19,6 @@ use crate::state::{
     increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
     ReplyArgs, CHANNEL_INFO, REPLY_ARGS,
 };
-use cw20::Cw20ExecuteMsg;
 use cw_osmo_proto::proto_ext::MessageExt;
 
 pub const ICS20_VERSION: &str = "ics20-1";
@@ -455,19 +454,6 @@ fn send_amount(amount: Amount, recipient: String) -> CosmosMsg {
             amount: vec![coin],
         }
         .into(),
-        Amount::Cw20(coin) => {
-            let msg = Cw20ExecuteMsg::Transfer {
-                recipient,
-                amount: coin.amount,
-            };
-
-            WasmMsg::Execute {
-                contract_addr: coin.address,
-                msg: to_binary(&msg).unwrap(),
-                funds: vec![],
-            }
-            .into()
-        }
     }
 }
 
