@@ -1,4 +1,4 @@
-use cosmwasm_std::Uint64;
+use cosmwasm_std::{Timestamp, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -28,4 +28,9 @@ pub enum QueryMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LockResult {
     pub lock_id: Uint64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct UnlockResult {
+    pub end_time: Timestamp,
 }
