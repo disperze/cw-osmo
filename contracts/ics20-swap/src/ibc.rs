@@ -51,9 +51,9 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         JOIN_POOL_ID => reply_gamm_result(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR),
         EXIT_POOL_ID => reply_gamm_result(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR),
         LOCKUP_ID => reply_lockup_account(deps, reply),
-        LOCK_TOKEN_ID => reply_lock_result(deps, reply),
+        LOCK_TOKEN_ID => reply_ack_from_data(deps, reply),
         CLAIM_TOKEN_ID => reply_claim_result(deps, reply),
-        UNLOCK_TOKEN_ID => reply_receive(deps, reply),
+        UNLOCK_TOKEN_ID => reply_ack_from_data(deps, reply),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
@@ -145,7 +145,7 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
     }
 }
 
-pub fn reply_lock_result(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
             let data = tx
