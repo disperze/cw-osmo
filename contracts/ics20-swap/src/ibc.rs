@@ -177,8 +177,6 @@ pub fn ibc_channel_close(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-/// Check to see if we have any balance here
-/// We should not return an error if possible, but rather an acknowledgement of failure
 pub fn ibc_packet_receive(
     deps: DepsMut,
     env: Env,

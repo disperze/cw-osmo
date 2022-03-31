@@ -4,11 +4,9 @@ use crate::contract::instantiate;
 use crate::ibc::{ibc_channel_connect, ibc_channel_open, ICS20_ORDERING, ICS20_VERSION};
 use crate::state::ChannelInfo;
 
-use cosmwasm_std::testing::{
-    mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
-};
+use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init, mock_info, MockApi, MockQuerier, MockStorage};
 use cosmwasm_std::{
-    Attribute, DepsMut, Event, IbcChannel, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint,
+    Attribute, DepsMut, Event, IbcEndpoint,
     OwnedDeps,
 };
 
@@ -18,22 +16,6 @@ pub const DEFAULT_TIMEOUT: u64 = 3600; // 1 hour,
 pub const CONTRACT_PORT: &str = "ibc:wasm1234567890abcdef";
 pub const REMOTE_PORT: &str = "transfer";
 pub const CONNECTION_ID: &str = "connection-2";
-
-pub fn mock_channel(channel_id: &str) -> IbcChannel {
-    IbcChannel::new(
-        IbcEndpoint {
-            port_id: CONTRACT_PORT.into(),
-            channel_id: channel_id.into(),
-        },
-        IbcEndpoint {
-            port_id: REMOTE_PORT.into(),
-            channel_id: format!("{}5", channel_id),
-        },
-        ICS20_ORDERING,
-        ICS20_VERSION,
-        CONNECTION_ID,
-    )
-}
 
 pub fn mock_channel_info(channel_id: &str) -> ChannelInfo {
     ChannelInfo {
@@ -48,10 +30,9 @@ pub fn mock_channel_info(channel_id: &str) -> ChannelInfo {
 
 // we simulate instantiate and ack here
 pub fn add_channel(mut deps: DepsMut, channel_id: &str) {
-    let channel = mock_channel(channel_id);
-    let open_msg = IbcChannelOpenMsg::new_init(channel.clone());
+    let open_msg = mock_ibc_channel_open_init(channel_id, ICS20_ORDERING, ICS20_VERSION);
     ibc_channel_open(deps.branch(), mock_env(), open_msg).unwrap();
-    let connect_msg = IbcChannelConnectMsg::new_ack(channel, ICS20_VERSION);
+    let connect_msg = mock_ibc_channel_connect_ack(channel_id, ICS20_ORDERING, ICS20_VERSION);
     ibc_channel_connect(deps.branch(), mock_env(), connect_msg).unwrap();
 }
 
