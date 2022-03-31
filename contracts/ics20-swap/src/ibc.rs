@@ -1,25 +1,16 @@
-use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut,
-    Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
-    IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
-    IbcReceiveResponse, Reply, Response, StdError, SubMsg,
-};
+use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError, SubMsg, coins};
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{
-    parse_gamm_result, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket, LockPacket,
-    LockResultAck, OsmoPacket, SwapPacket, Voucher,
-};
+use crate::ibc_msg::{parse_gamm_result, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket, LockPacket, LockResultAck, OsmoPacket, SwapPacket, Voucher, LockuptAck};
 use crate::parse::{
     parse_pool_id, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR,
     SWAP_EVENT,
 };
-use crate::state::{
-    increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
-    ReplyArgs, CHANNEL_INFO, REPLY_ARGS,
-};
+use crate::state::{increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs, CHANNEL_INFO, REPLY_ARGS, CONFIG, LOCKUP};
+use cw_utils::parse_reply_instantiate_data;
 use cw_osmo_proto::proto_ext::{proto_decode, MessageExt};
+use crate::msg::LockupInitMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -47,6 +38,7 @@ const SWAP_ID: u64 = 0xcb37;
 const JOIN_POOL_ID: u64 = 0xad54;
 const EXIT_POOL_ID: u64 = 0xfa61;
 const ACK_FAILURE_ID: u64 = 0xfa17;
+const LOCKUP_ID: u64 = 0xdf16;
 const LOCK_TOKEN_ID: u64 = 0xbc42;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -56,6 +48,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         SWAP_ID => reply_gamm_result(deps, reply, SWAP_EVENT, SWAP_ATTR),
         JOIN_POOL_ID => reply_gamm_result(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR),
         EXIT_POOL_ID => reply_gamm_result(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR),
+        LOCKUP_ID => reply_lock_result(deps, reply),
         LOCK_TOKEN_ID => reply_lock_result(deps, reply),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
@@ -100,6 +93,28 @@ pub fn reply_gamm_result(
     }
 }
 
+pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    match reply.result.clone() {
+        ContractResult::Ok(_) => {
+            let res = parse_reply_instantiate_data(reply);
+
+            match res {
+                Ok(data) => {
+                    let reply_args = REPLY_ARGS.load(deps.storage)?;
+
+                    LOCKUP.save(deps.storage, reply_args.channel.as_str(), &data.contract_address)?;
+                    let ack = LockuptAck {contract: data.contract_address};
+                    let data = to_binary(&ack).unwrap();
+
+                    Ok(Response::new().set_data(ack_success_with_body(data)))
+                },
+                Err(err) => Ok(Response::new().set_data(ack_fail(err.to_string()))),
+            }
+        }
+        ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+    }
+}
+
 pub fn reply_lock_result(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
@@ -107,12 +122,6 @@ pub fn reply_lock_result(deps: DepsMut, reply: Reply) -> Result<Response, Contra
                 .data
                 .ok_or_else(|| StdError::generic_err("Missing reply data"))?;
 
-            let result: cw_osmo_proto::osmosis::lockup::MsgLockTokensResponse =
-                proto_decode(data.as_slice())?;
-            let ack = LockResultAck {
-                lock_id: result.id.into(),
-            };
-            let data = to_binary(&ack).unwrap();
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
         ContractResult::Err(err) => {
@@ -264,7 +273,7 @@ fn do_ibc_packet_receive(
 
     // we need to save the data to update the balances in reply
     let reply_args = ReplyArgs {
-        channel,
+        channel: channel.clone(),
         denom: denom.to_string(),
         amount: msg.amount,
     };
@@ -272,18 +281,22 @@ fn do_ibc_packet_receive(
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
 
     if let Some(action) = msg.action {
+        let contract = env.contract.address.into();
         match action {
             OsmoPacket::Swap(swap) => {
-                swap_receive(swap, msg.sender, to_send, env.contract.address.into())
+                swap_receive(swap, msg.sender, to_send, contract)
             }
             OsmoPacket::JoinPool(join_pool) => {
-                receive_join_pool(join_pool, msg.sender, to_send, env.contract.address.into())
+                receive_join_pool(join_pool, msg.sender, to_send, contract)
             }
             OsmoPacket::ExitPool(exit_pool) => {
-                receive_exit_pool(exit_pool, msg.sender, to_send, env.contract.address.into())
+                receive_exit_pool(exit_pool, msg.sender, to_send, contract)
+            }
+            OsmoPacket::LockupAccount {} => {
+                receive_create_lockup(deps, &channel, to_send, contract)
             }
             OsmoPacket::Lock(lock) => {
-                receive_lock_tokens(lock, msg.sender, to_send, env.contract.address.into())
+                receive_lock_tokens(deps, &channel, lock, msg.sender, to_send)
             }
         }
     } else {
@@ -402,25 +415,57 @@ fn receive_exit_pool(
     Ok(res)
 }
 
-fn receive_lock_tokens(
-    lock: LockPacket,
-    sender: String,
+fn receive_create_lockup(
+    deps: DepsMut,
+    channel: &str,
     token_in: Amount,
     contract: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let tx = cw_osmo_proto::osmosis::lockup::MsgLockTokens {
-        owner: contract,
-        duration: Some(cw_osmo_proto::Duration {
-            seconds: lock.duration.u64() as i64,
-            nanos: 0,
-        }),
-        coins: vec![cw_osmo_proto::cosmos::base::v1beta1::Coin {
-            denom: token_in.denom(),
-            amount: token_in.amount().to_string(),
-        }],
-    };
+    if LOCKUP.has(deps.storage, channel) {
+        return Err(ContractError::OnlyLockupByChannel {});
+    }
 
-    let submsg = SubMsg::reply_always(tx.to_msg()?, LOCK_TOKEN_ID);
+    if !token_in.amount().is_zero() {
+        return Err(ContractError::InvalidAmountValue {});
+    }
+
+    let config = CONFIG.load(deps.storage)?;
+
+    let admin = LockupInitMsg {admin: contract};
+    let init_msg: CosmosMsg = WasmMsg::Instantiate {
+        admin: None,
+        msg: to_binary(&admin)?,
+        code_id: config.lockup_id,
+        label: format!("Lockup {}", channel),
+        funds: vec![],
+    }.into();
+
+    let submsg = SubMsg::reply_always(init_msg, LOCKUP_ID);
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_submessage(submsg)
+        .add_attribute("action", "receive_lockup_account")
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+fn receive_lock_tokens(
+    deps: DepsMut,
+    channel: &str,
+    lock: LockPacket,
+    sender: String,
+    token_in: Amount,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let lockup_contract = LOCKUP.load(deps.storage, channel)?;
+
+    let exec_msg: CosmosMsg  = WasmMsg::Execute {
+        contract_addr: lockup_contract,
+        msg: to_binary(&lock)?,
+        funds: coins(token_in.amount().u128(), token_in.denom()),
+    }.into();
+    let submsg = SubMsg::reply_always(exec_msg, LOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
