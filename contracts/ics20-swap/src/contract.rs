@@ -31,6 +31,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let cfg = Config {
         default_timeout: msg.default_timeout,
+        lockup_id: msg.lockup_id,
     };
     CONFIG.save(deps.storage, &cfg)?;
 
