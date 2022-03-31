@@ -27,4 +27,10 @@ pub enum ContractError {
 
     #[error("Got a submessage reply with unknown id: {id}")]
     UnknownReplyId { id: u64 },
+
+    #[error("Cannot get lock id")]
+    NoFoundLockId {},
+
+    #[error("Cannot get lock end time")]
+    NoFoundLockEndTime {},
 }

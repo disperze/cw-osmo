@@ -1,40 +1,97 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, BankMsg, Coin, ContractResult, CosmosMsg, DepsMut, Env, MessageInfo, Reply,
-    Response, StdError, SubMsg, Uint64,
+    to_binary, BankMsg, Coin, ContractResult, CosmosMsg, DepsMut, Env, Event, MessageInfo, Reply,
+    Response, StdError, SubMsg, Timestamp, Uint64,
 };
 use cw2::set_contract_version;
+use cw_osmo_proto::osmosis::lockup;
 use cw_osmo_proto::proto_ext::{proto_decode, MessageExt};
+use cw_osmo_proto::query::query_proto;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, LockResult};
+use crate::msg::{ExecuteMsg, InstantiateMsg, LockResult, UnlockResult};
 use crate::state::ADMIN;
 
 const CONTRACT_NAME: &str = "crates.io:cw-osmo-lockup";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const LOCK_TOKEN_ID: u64 = 0x43ab;
+const UNLOCK_TOKEN_ID: u64 = 0x71a3;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(_deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
+pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
-        LOCK_TOKEN_ID => match reply.result {
-            ContractResult::Ok(tx) => {
-                let data = tx.data.ok_or(ContractError::NoReplyData {})?;
-
-                let response: cw_osmo_proto::osmosis::lockup::MsgLockTokensResponse =
-                    proto_decode(data.as_slice())?;
-                let result = LockResult {
-                    lock_id: response.id.into(),
-                };
-
-                Ok(Response::new().set_data(to_binary(&result)?))
-            }
-            ContractResult::Err(err) => Err(StdError::generic_err(err).into()),
-        },
+        LOCK_TOKEN_ID => reply_lock(reply),
+        UNLOCK_TOKEN_ID => reply_unlock(deps, reply),
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
     }
+}
+
+pub fn reply_lock(reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(tx) => {
+            let data = tx.data.ok_or(ContractError::NoReplyData {})?;
+
+            let response: lockup::MsgLockTokensResponse = proto_decode(data.as_slice())?;
+            let result = LockResult {
+                lock_id: response.id.into(),
+            };
+
+            Ok(Response::new().set_data(to_binary(&result)?))
+        }
+        ContractResult::Err(err) => Err(StdError::generic_err(err).into()),
+    }
+}
+
+pub fn reply_unlock(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(tx) => {
+            // TODO: get timestamp from logs or data, osmosis issue#
+            let lock_id = parse_lock_id_result(tx.events)?;
+            let req = lockup::LockedRequest { lock_id };
+            let res: lockup::LockedResponse = query_proto(deps.as_ref(), req)?;
+
+            let end_time = res
+                .lock
+                .ok_or(ContractError::NoFoundLockEndTime {})?
+                .end_time
+                .ok_or(ContractError::NoFoundLockEndTime {})?;
+
+            let result = UnlockResult {
+                end_time: Timestamp::from_seconds(end_time.seconds as u64)
+                    .plus_nanos(end_time.nanos as u64),
+            };
+
+            Ok(Response::new().set_data(to_binary(&result)?))
+        }
+        ContractResult::Err(err) => Err(StdError::generic_err(err).into()),
+    }
+}
+
+const LOCKUP_EVENT: &str = "begin_unlock";
+const LOCKUP_ATTR_ID: &str = "period_lock_id";
+
+pub fn parse_lock_id_result(events: Vec<Event>) -> Result<u64, ContractError> {
+    for ev in events {
+        if ev.ty.ne(LOCKUP_EVENT) {
+            continue;
+        }
+
+        for attr in ev.attributes {
+            if attr.key.eq(LOCKUP_ATTR_ID) {
+                let lock_id = attr
+                    .value
+                    .parse::<u64>()
+                    .map_err(|_| ContractError::NoFoundLockId {})?;
+
+                return Ok(lock_id);
+            }
+        }
+        break;
+    }
+
+    Err(ContractError::NoFoundLockId {})
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -83,7 +140,7 @@ pub fn execute_lock(
 ) -> Result<Response, ContractError> {
     ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
 
-    let tx = cw_osmo_proto::osmosis::lockup::MsgLockTokens {
+    let tx = lockup::MsgLockTokens {
         owner: contract,
         duration: Some(cw_osmo_proto::Duration {
             seconds: duration.u64() as i64,
@@ -113,14 +170,15 @@ pub fn execute_exit(
     }
     ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
 
-    let tx = cw_osmo_proto::osmosis::lockup::MsgBeginUnlocking {
+    let tx = lockup::MsgBeginUnlocking {
         owner: contract,
         id: lock_id.u64(),
         coins: vec![],
     };
+    let submsg = SubMsg::reply_on_success(tx.to_msg()?, UNLOCK_TOKEN_ID);
 
     Ok(Response::new()
-        .add_message(tx.to_msg()?)
+        .add_submessage(submsg)
         .add_attribute("method", "unlock")
         .add_attribute("lock_id", lock_id.to_string()))
 }
