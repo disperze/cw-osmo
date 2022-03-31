@@ -64,3 +64,8 @@ pub struct ChannelResponse {
 pub struct ConfigResponse {
     pub default_timeout: u64,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+pub struct LockupInitMsg {
+    pub admin: String,
+}

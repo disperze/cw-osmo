@@ -67,6 +67,9 @@ pub enum ContractError {
 
     #[error("Invalid amount value")]
     InvalidAmountValue {},
+
+    #[error("Only support one lockup account by channel")]
+    OnlyLockupByChannel {},
 }
 
 impl From<FromUtf8Error> for ContractError {
