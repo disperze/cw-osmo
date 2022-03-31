@@ -1,15 +1,15 @@
-use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError, SubMsg, coins};
+use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError, SubMsg, coins, Coin};
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{parse_gamm_result, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket, LockPacket, LockResultAck, OsmoPacket, SwapPacket, Voucher, LockuptAck};
+use crate::ibc_msg::{parse_gamm_result, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket, LockPacket, OsmoPacket, SwapPacket, Voucher, LockuptAck, ClaimPacket, UnlockPacket, AmountResultAck};
 use crate::parse::{
     parse_pool_id, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR,
     SWAP_EVENT,
 };
 use crate::state::{increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs, CHANNEL_INFO, REPLY_ARGS, CONFIG, LOCKUP};
 use cw_utils::parse_reply_instantiate_data;
-use cw_osmo_proto::proto_ext::{proto_decode, MessageExt};
+use cw_osmo_proto::proto_ext::{MessageExt};
 use crate::msg::LockupInitMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
@@ -40,6 +40,8 @@ const EXIT_POOL_ID: u64 = 0xfa61;
 const ACK_FAILURE_ID: u64 = 0xfa17;
 const LOCKUP_ID: u64 = 0xdf16;
 const LOCK_TOKEN_ID: u64 = 0xbc42;
+const CLAIM_TOKEN_ID: u64 = 0x1654;
+const UNLOCK_TOKEN_ID: u64 = 0x6f11;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
@@ -48,8 +50,10 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         SWAP_ID => reply_gamm_result(deps, reply, SWAP_EVENT, SWAP_ATTR),
         JOIN_POOL_ID => reply_gamm_result(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR),
         EXIT_POOL_ID => reply_gamm_result(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR),
-        LOCKUP_ID => reply_lock_result(deps, reply),
+        LOCKUP_ID => reply_lockup_account(deps, reply),
         LOCK_TOKEN_ID => reply_lock_result(deps, reply),
+        CLAIM_TOKEN_ID => reply_claim_result(deps, reply),
+        UNLOCK_TOKEN_ID => reply_receive(deps, reply),
         ACK_FAILURE_ID => match reply.result {
             ContractResult::Ok(_) => Ok(Response::new()),
             ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
@@ -112,6 +116,32 @@ pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, Con
             }
         }
         ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+    }
+}
+
+pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(tx) => {
+            let data = tx
+                .data
+                .ok_or_else(|| StdError::generic_err("Missing reply data"))?;
+            let token: Coin = from_binary(&data)?;
+            let reply_args = REPLY_ARGS.load(deps.storage)?;
+            increase_channel_balance(
+                deps.storage,
+                &reply_args.channel,
+                &token.denom,
+                token.amount,
+            )?;
+
+            let ack = AmountResultAck {denom: token.denom, amount: token.amount};
+            let data = to_binary(&ack).unwrap();
+            Ok(Response::new().set_data(ack_success_with_body(data)))
+        }
+        ContractResult::Err(err) => {
+            restore_balance_reply(deps.storage)?;
+            Ok(Response::new().set_data(ack_fail(err)))
+        }
     }
 }
 
@@ -297,7 +327,13 @@ fn do_ibc_packet_receive(
             }
             OsmoPacket::Lock(lock) => {
                 receive_lock_tokens(deps, &channel, lock, msg.sender, to_send)
-            }
+            },
+            OsmoPacket::Claim(claim) => {
+                receive_claim_tokens(deps, &channel, claim, msg.sender, to_send)
+            },
+            OsmoPacket::Unlock(unlock) => {
+                receive_unlock_tokens(deps, &channel, unlock, msg.sender, to_send)
+            },
         }
     } else {
         let send = send_amount(to_send, msg.receiver.clone());
@@ -460,11 +496,7 @@ fn receive_lock_tokens(
 ) -> Result<IbcReceiveResponse, ContractError> {
     let lockup_contract = LOCKUP.load(deps.storage, channel)?;
 
-    let exec_msg: CosmosMsg  = WasmMsg::Execute {
-        contract_addr: lockup_contract,
-        msg: to_binary(&lock)?,
-        funds: coins(token_in.amount().u128(), token_in.denom()),
-    }.into();
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lock)?, &token_in);
     let submsg = SubMsg::reply_always(exec_msg, LOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
@@ -477,6 +509,60 @@ fn receive_lock_tokens(
         .add_attribute("success", "true");
 
     Ok(res)
+}
+
+fn receive_claim_tokens(
+    deps: DepsMut,
+    channel: &str,
+    claim: ClaimPacket,
+    sender: String,
+    token_in: Amount,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let lockup_contract = LOCKUP.load(deps.storage, channel)?;
+
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&claim)?, &token_in);
+    let submsg = SubMsg::reply_always(exec_msg, CLAIM_TOKEN_ID);
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_submessage(submsg)
+        .add_attribute("action", "receive_claim_tokens")
+        .add_attribute("sender", sender)
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+fn receive_unlock_tokens(
+    deps: DepsMut,
+    channel: &str,
+    unlock: UnlockPacket,
+    sender: String,
+    token_in: Amount,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let lockup_contract = LOCKUP.load(deps.storage, channel)?;
+
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&unlock)?, &token_in);
+    let submsg = SubMsg::reply_on_error(exec_msg, UNLOCK_TOKEN_ID);
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_submessage(submsg)
+        .add_attribute("action", "receive_unlock")
+        .add_attribute("sender", sender)
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+fn create_lockup_msg(contract_addr: String, msg: Binary, fund: &Amount) -> CosmosMsg {
+    let wasm_msg = WasmMsg::Execute {
+        contract_addr,
+        msg,
+        funds: coins(fund.amount().u128(), fund.denom()),
+    }.into();
+
+    wasm_msg
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
