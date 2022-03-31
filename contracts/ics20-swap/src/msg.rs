@@ -8,6 +8,8 @@ use crate::state::ChannelInfo;
 pub struct InitMsg {
     /// Default timeout for ics20 packets, specified in seconds
     pub default_timeout: u64,
+    /// Lockup code ID
+    pub lockup_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
