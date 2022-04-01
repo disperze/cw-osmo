@@ -1,4 +1,4 @@
-# GAMM contracts
+# Osmosis contracts
 [![Contracts](https://github.com/giansalex/cw-osmo/actions/workflows/cw.yml/badge.svg)](https://github.com/giansalex/cw-osmo/actions/workflows/cw.yml)
 [![Security audit](https://github.com/giansalex/cw-osmo/actions/workflows/audit.yml/badge.svg)](https://github.com/giansalex/cw-osmo/actions/workflows/audit.yml)
 

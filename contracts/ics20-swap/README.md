@@ -1,6 +1,6 @@
 # Osmosis ICS20 Swap
 
-Swap assets and add liquidity in osmosis from remote chain.
+Swap assets and add liquidity in osmosis from remote chains.
 
 ## Messages
 
@@ -9,7 +9,7 @@ Swap assets and add liquidity in osmosis from remote chain.
 ## IBC Packet
 
 **Ics20Packet**
-Data packet sent by a blockchain to Osmosis chain to make custom transaction. It contains the following parameters:
+Data packet sent by a blockchain to Osmosis chain to make custom action. It contains the following parameters:
 
 | Parameter | Type   | Description               |
 |-----------|--------|---------------------------|
