@@ -5,12 +5,10 @@ use crate::ibc::{ibc_channel_connect, ibc_channel_open, ICS20_ORDERING, ICS20_VE
 use crate::state::ChannelInfo;
 
 use cosmwasm_std::testing::{
-    mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
+    mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
+    mock_info, MockApi, MockQuerier, MockStorage,
 };
-use cosmwasm_std::{
-    Attribute, DepsMut, Event, IbcChannel, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint,
-    OwnedDeps,
-};
+use cosmwasm_std::{Attribute, DepsMut, Event, IbcEndpoint, OwnedDeps};
 
 use crate::msg::InitMsg;
 
@@ -19,28 +17,12 @@ pub const CONTRACT_PORT: &str = "ibc:wasm1234567890abcdef";
 pub const REMOTE_PORT: &str = "transfer";
 pub const CONNECTION_ID: &str = "connection-2";
 
-pub fn mock_channel(channel_id: &str) -> IbcChannel {
-    IbcChannel::new(
-        IbcEndpoint {
-            port_id: CONTRACT_PORT.into(),
-            channel_id: channel_id.into(),
-        },
-        IbcEndpoint {
-            port_id: REMOTE_PORT.into(),
-            channel_id: format!("{}5", channel_id),
-        },
-        ICS20_ORDERING,
-        ICS20_VERSION,
-        CONNECTION_ID,
-    )
-}
-
 pub fn mock_channel_info(channel_id: &str) -> ChannelInfo {
     ChannelInfo {
         id: channel_id.to_string(),
         counterparty_endpoint: IbcEndpoint {
-            port_id: REMOTE_PORT.into(),
-            channel_id: format!("{}5", channel_id),
+            port_id: "their_port".to_string(),
+            channel_id: "channel-7".to_string(),
         },
         connection_id: CONNECTION_ID.into(),
     }
@@ -48,10 +30,9 @@ pub fn mock_channel_info(channel_id: &str) -> ChannelInfo {
 
 // we simulate instantiate and ack here
 pub fn add_channel(mut deps: DepsMut, channel_id: &str) {
-    let channel = mock_channel(channel_id);
-    let open_msg = IbcChannelOpenMsg::new_init(channel.clone());
+    let open_msg = mock_ibc_channel_open_init(channel_id, ICS20_ORDERING, ICS20_VERSION);
     ibc_channel_open(deps.branch(), mock_env(), open_msg).unwrap();
-    let connect_msg = IbcChannelConnectMsg::new_ack(channel, ICS20_VERSION);
+    let connect_msg = mock_ibc_channel_connect_ack(channel_id, ICS20_ORDERING, ICS20_VERSION);
     ibc_channel_connect(deps.branch(), mock_env(), connect_msg).unwrap();
 }
 
@@ -83,15 +64,15 @@ pub fn swap_events_mock() -> Vec<Event> {
             "tokens_in",
             "10000000ibc/46B44899322F3CD854D2D46DEEF881958467CDD4B3B10086DA49296BBED94BED",
         ),
-        Attribute::new("tokens_out", "36601070uosmo"),
-        Attribute::new("module", "gamm"),
-        Attribute::new("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
-        Attribute::new("pool_id", "560"),
-        Attribute::new("tokens_in", "36601070uosmo"),
         Attribute::new(
             "tokens_out",
             "338527564ibc/BE1BB42D4BE3C30D50B68D7C41DB4DFCE9678E8EF8C539F6E6A9345048894FCC",
         ),
+        Attribute::new("module", "gamm"),
+        Attribute::new("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
+        Attribute::new("pool_id", "560"),
+        Attribute::new("tokens_in", "36601070uosmo"),
+        Attribute::new("tokens_out", "36601070uosmo"),
     ];
     let mut ev2 = Event::new("transfer");
     ev2.attributes = vec![

@@ -18,7 +18,7 @@ use crate::state::{increase_channel_balance, Config, ADMIN, CHANNEL_INFO, CHANNE
 use cw_utils::one_coin;
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:cw20-ics20-swap";
+const CONTRACT_NAME: &str = "crates.io:cw-ics20-swap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -214,7 +214,7 @@ mod test {
         .unwrap_err();
         assert_eq!(
             err,
-            StdError::not_found("cw20_ics20_swap::state::ChannelInfo")
+            StdError::not_found("cw_ics20_swap::state::ChannelInfo")
         );
     }
 

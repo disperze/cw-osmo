@@ -1,9 +1,9 @@
 [package]
-name = "cw20-ics20-swap"
+name = "cw-ics20-swap"
 version = "0.1.0"
-authors = ["Ethan Frey <ethanfrey@users.noreply.github.com>", "Giancarlos Salas <me@giansalex.dev>"]
+authors = ["Giancarlos Salas <me@giansalex.dev>"]
 edition = "2018"
-description = "IBC Enabled contracts that receives CW20 tokens and sends them over ICS20 to a remote chain"
+description = "IBC Enabled contracts that sends/receives tokens over ICS20 and execute custom action"
 license = "MIT"
 
 [lib]
@@ -11,13 +11,12 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 backtraces = ["cosmwasm-std/backtraces"]
-# use library feature to disable all init/handle/query exports
+
 library = []
 
 [dependencies]
 cw-utils = "0.12.1"
 cw2 = "0.12.1"
-cw20 = "0.12.1"
 cosmwasm-std = { version = "1.0.0-beta5", features = ["stargate"] }
 cw-osmo-proto = { path = "../../packages/osmo-proto", version = "0.1.0" }
 cw-storage-plus = "0.12.1"
