@@ -125,11 +125,8 @@ mod test {
         assert_eq!(true, result.is_ok());
         let token = result.unwrap();
 
-        assert_eq!(Uint128::new(338527564), token.amount);
-        assert_eq!(
-            "ibc/BE1BB42D4BE3C30D50B68D7C41DB4DFCE9678E8EF8C539F6E6A9345048894FCC",
-            token.denom
-        );
+        assert_eq!(Uint128::new(36601070), token.amount);
+        assert_eq!("uosmo", token.denom);
     }
 
     #[test]

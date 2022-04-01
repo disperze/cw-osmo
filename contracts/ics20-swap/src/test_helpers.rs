@@ -64,15 +64,15 @@ pub fn swap_events_mock() -> Vec<Event> {
             "tokens_in",
             "10000000ibc/46B44899322F3CD854D2D46DEEF881958467CDD4B3B10086DA49296BBED94BED",
         ),
-        Attribute::new("tokens_out", "36601070uosmo"),
-        Attribute::new("module", "gamm"),
-        Attribute::new("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
-        Attribute::new("pool_id", "560"),
-        Attribute::new("tokens_in", "36601070uosmo"),
         Attribute::new(
             "tokens_out",
             "338527564ibc/BE1BB42D4BE3C30D50B68D7C41DB4DFCE9678E8EF8C539F6E6A9345048894FCC",
         ),
+        Attribute::new("module", "gamm"),
+        Attribute::new("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
+        Attribute::new("pool_id", "560"),
+        Attribute::new("tokens_in", "36601070uosmo"),
+        Attribute::new("tokens_out", "36601070uosmo"),
     ];
     let mut ev2 = Event::new("transfer");
     ev2.attributes = vec![

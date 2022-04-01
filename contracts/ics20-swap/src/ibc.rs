@@ -461,11 +461,12 @@ mod test {
     use crate::test_helpers::*;
 
     use crate::contract::{execute, query_channel};
-    use crate::ibc_msg::SwapAmountInRoute;
+    use crate::ibc_msg::{AmountResultAck, SwapAmountInRoute};
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{
-        coins, to_vec, IbcEndpoint, ReplyOn, StdError, StdResult, Timestamp, Uint128, Uint64,
+        coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult, SubMsgExecutionResponse,
+        Timestamp, Uint128, Uint64,
     };
     use serde::Serialize;
 
@@ -526,7 +527,7 @@ mod test {
         )
     }
 
-    fn check_gamm_submsg(msg: SubMsg, reply_id: u64, action: &str) -> StdResult<bool> {
+    fn check_gamm_submsg(msg: SubMsg, reply_id: u64, action: &str) -> StdResult<()> {
         if msg.id != reply_id {
             return Err(StdError::generic_err("Invalid reply id"));
         }
@@ -547,7 +548,25 @@ mod test {
             _ => return Err(StdError::generic_err("Invalid cosmMsg")),
         };
 
-        return Ok(true);
+        return Ok(());
+    }
+
+    fn get_gamm_ack(data: &Binary) -> StdResult<AmountResultAck> {
+        let ack: Ics20Ack = from_binary(data).unwrap();
+        match ack {
+            Ics20Ack::Result(data) => {
+                let result: AmountResultAck = from_binary(&data).unwrap();
+                Ok(result)
+            }
+            Ics20Ack::Error(err) => Err(StdError::generic_err(err)),
+        }
+    }
+
+    fn mock_reply_msg(id: u64, events: Vec<Event>) -> Reply {
+        Reply {
+            id,
+            result: ContractResult::Ok(SubMsgExecutionResponse { events, data: None }),
+        }
     }
 
     fn mock_ics20_data(
@@ -565,6 +584,7 @@ mod test {
             action,
         }
     }
+
     fn mock_receive_packet(
         my_channel: &str,
         amount: u128,
@@ -649,32 +669,24 @@ mod test {
     }
 
     #[test]
-    fn receive_gamm_action() {
+    fn receive_swap_action() {
         let send_channel = "channel-9";
         let mut deps = setup(&["channel-1", "channel-7", send_channel]);
         let denom = "uatom";
+        let swap_denom = "uosmo";
 
         let swap = OsmoPacket::Swap(SwapPacket {
             routes: vec![SwapAmountInRoute {
                 pool_id: 1u8.into(),
-                token_out_denom: "uosmo".to_string(),
+                token_out_denom: swap_denom.to_string(),
             }],
             token_out_min_amount: 1u8.into(),
         });
-        let join_pool = OsmoPacket::JoinPool(JoinPoolPacket {
-            pool_id: 1u8.into(),
-            share_out_min_amount: 1u8.into(),
-        });
 
         let swap_packet_data = mock_ics20_data(876543210, denom, "", Some(swap));
-        let join_packet_data = mock_ics20_data(111000000, denom, "", Some(join_pool));
-
-        let high_packet_data = mock_ics20_data(1876543210, denom, "local-rcpt", None);
 
         // prepare some mock packets
         let swap_packet = mock_ibc_rcv_packet(send_channel, &swap_packet_data);
-        let join_packet = mock_ibc_rcv_packet(send_channel, &join_packet_data);
-        let recv_high_packet = mock_ibc_rcv_packet(send_channel, &high_packet_data);
 
         // cannot receive this denom yet
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), swap_packet.clone()).unwrap();
@@ -697,13 +709,7 @@ mod test {
         assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
         assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
 
-        // cannot receive more than we sent
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), recv_high_packet).unwrap();
-        assert!(res.messages.is_empty());
-        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        assert_eq!(ack, no_funds);
-
-        // Swap action with valid amount
+        // Swap action
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), swap_packet).unwrap();
         assert_eq!(1, res.messages.len());
         check_gamm_submsg(res.messages[0].clone(), SWAP_ID, "swap").unwrap();
@@ -711,7 +717,76 @@ mod test {
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         matches!(ack, Ics20Ack::Result(_));
 
-        // Join pool action with valid amount
+        // Simulate swap reply
+        let reply_msg = mock_reply_msg(SWAP_ID, swap_events_mock());
+
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        let gamm_ack = get_gamm_ack(&res.data.unwrap()).unwrap();
+        let gamm_ack_exp = AmountResultAck {
+            amount: Uint128::new(36601070u128),
+            denom: swap_denom.to_string(),
+        };
+        assert_eq!(gamm_ack, gamm_ack_exp);
+
+        // query channel state
+        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
+        assert_eq!(
+            state.balances,
+            vec![
+                Amount::native(111111111, denom),
+                Amount::native(36601070, swap_denom)
+            ]
+        );
+        assert_eq!(
+            state.total_sent,
+            vec![
+                Amount::native(987654321, denom),
+                Amount::native(36601070, swap_denom)
+            ]
+        );
+    }
+
+    #[test]
+    fn receive_liquidty_actions() {
+        let send_channel = "channel-9";
+        let mut deps = setup(&["channel-1", "channel-7", send_channel]);
+        let denom = "uosmo";
+        let pool_denom = "gamm/pool/1";
+
+        let join_pool = OsmoPacket::JoinPool(JoinPoolPacket {
+            pool_id: 1u8.into(),
+            share_out_min_amount: 1u8.into(),
+        });
+
+        let exit_pool = OsmoPacket::ExitPool(ExitPoolPacket {
+            token_out_denom: denom.into(),
+            token_out_min_amount: 1u8.into(),
+        });
+
+        let join_packet_data = mock_ics20_data(876543210, denom, "", Some(join_pool));
+        let exit_packet_data =
+            mock_ics20_data(74196992097318119147, pool_denom, "", Some(exit_pool));
+
+        // prepare some mock packets
+        let join_packet = mock_ibc_rcv_packet(send_channel, &join_packet_data);
+        let exit_packet = mock_ibc_rcv_packet(send_channel, &exit_packet_data);
+
+        // we transfer some tokens
+        let msg = ExecuteMsg::Transfer(TransferMsg {
+            channel: send_channel.to_string(),
+            remote_address: "my-remote-address".to_string(),
+            timeout: None,
+        });
+        let info = mock_info("local-sender", &coins(987654321, denom));
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // query channel state|_|
+        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
+        assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
+        assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
+
+        // Join pool action
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), join_packet).unwrap();
         assert_eq!(1, res.messages.len());
         check_gamm_submsg(res.messages[0].clone(), JOIN_POOL_ID, "join").unwrap();
@@ -719,11 +794,40 @@ mod test {
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         matches!(ack, Ics20Ack::Result(_));
 
-        // only need to call reply block on error case
+        // Simulate join_pool reply
+        let reply_msg = mock_reply_msg(JOIN_POOL_ID, join_pool_events_mock());
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        let gamm_ack = get_gamm_ack(&res.data.unwrap()).unwrap();
+        let gamm_ack_exp = AmountResultAck {
+            amount: Uint128::new(74196993097318119147u128),
+            denom: pool_denom.to_string(),
+        };
+        assert_eq!(gamm_ack, gamm_ack_exp);
+
+        // Exit pool action
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), exit_packet).unwrap();
+        assert_eq!(1, res.messages.len());
+        check_gamm_submsg(res.messages[0].clone(), EXIT_POOL_ID, "exit").unwrap();
+
+        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
+        matches!(ack, Ics20Ack::Result(_));
 
         // query channel state
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
-        assert_eq!(state.balances, vec![Amount::native(111111, denom)]);
-        assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
+        assert_eq!(
+            state.balances,
+            vec![
+                Amount::native(1000000000000, pool_denom),
+                Amount::native(111111111, denom)
+            ]
+        );
+        assert_eq!(
+            state.total_sent,
+            vec![
+                Amount::native(74196993097318119147, pool_denom),
+                Amount::native(987654321, denom)
+            ]
+        );
     }
 }
