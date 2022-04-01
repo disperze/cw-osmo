@@ -4,7 +4,9 @@ version = "0.1.0"
 authors = ["Giancarlos Salas <me@giansalex.dev>"]
 edition = "2018"
 description = "IBC Enabled contracts that sends/receives tokens over ICS20 and execute custom action"
+repository = "https://github.com/disperze/cw-osmo"
 license = "MIT"
+keywords = ["osmosis", "cosmwasm", "ibc"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
