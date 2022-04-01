@@ -1,16 +1,28 @@
-use cosmwasm_std::{attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError, SubMsg, coins, Coin};
+use cosmwasm_std::{
+    attr, coins, entry_point, from_binary, to_binary, BankMsg, Binary, Coin, ContractResult,
+    CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
+    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError,
+    SubMsg, WasmMsg,
+};
 
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
-use crate::ibc_msg::{parse_gamm_result, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket, LockPacket, OsmoPacket, SwapPacket, Voucher, LockuptAck, ClaimPacket, UnlockPacket, AmountResultAck};
+use crate::ibc_msg::{
+    parse_gamm_result, AmountResultAck, ClaimPacket, ExitPoolPacket, Ics20Ack, Ics20Packet,
+    JoinPoolPacket, LockPacket, LockuptAck, OsmoPacket, SwapPacket, UnlockPacket, Voucher,
+};
+use crate::msg::LockupInitMsg;
 use crate::parse::{
     parse_pool_id, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR,
     SWAP_EVENT,
 };
-use crate::state::{increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo, ReplyArgs, CHANNEL_INFO, REPLY_ARGS, CONFIG, LOCKUP};
+use crate::state::{
+    increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
+    ReplyArgs, CHANNEL_INFO, CONFIG, LOCKUP, REPLY_ARGS,
+};
+use cw_osmo_proto::proto_ext::MessageExt;
 use cw_utils::parse_reply_instantiate_data;
-use cw_osmo_proto::proto_ext::{MessageExt};
-use crate::msg::LockupInitMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -106,12 +118,18 @@ pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, Con
                 Ok(data) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;
 
-                    LOCKUP.save(deps.storage, reply_args.channel.as_str(), &data.contract_address)?;
-                    let ack = LockuptAck {contract: data.contract_address};
+                    LOCKUP.save(
+                        deps.storage,
+                        reply_args.channel.as_str(),
+                        &data.contract_address,
+                    )?;
+                    let ack = LockuptAck {
+                        contract: data.contract_address,
+                    };
                     let data = to_binary(&ack).unwrap();
 
                     Ok(Response::new().set_data(ack_success_with_body(data)))
-                },
+                }
                 Err(err) => Ok(Response::new().set_data(ack_fail(err.to_string()))),
             }
         }
@@ -134,7 +152,10 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
                 token.amount,
             )?;
 
-            let ack = AmountResultAck {denom: token.denom, amount: token.amount};
+            let ack = AmountResultAck {
+                denom: token.denom,
+                amount: token.amount,
+            };
             let data = to_binary(&ack).unwrap();
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
@@ -313,9 +334,7 @@ fn do_ibc_packet_receive(
     if let Some(action) = msg.action {
         let contract = env.contract.address.into();
         match action {
-            OsmoPacket::Swap(swap) => {
-                swap_receive(swap, msg.sender, to_send, contract)
-            }
+            OsmoPacket::Swap(swap) => swap_receive(swap, msg.sender, to_send, contract),
             OsmoPacket::JoinPool(join_pool) => {
                 receive_join_pool(join_pool, msg.sender, to_send, contract)
             }
@@ -327,13 +346,13 @@ fn do_ibc_packet_receive(
             }
             OsmoPacket::Lock(lock) => {
                 receive_lock_tokens(deps, &channel, lock, msg.sender, to_send)
-            },
+            }
             OsmoPacket::Claim(claim) => {
                 receive_claim_tokens(deps, &channel, claim, msg.sender, to_send)
-            },
+            }
             OsmoPacket::Unlock(unlock) => {
                 receive_unlock_tokens(deps, &channel, unlock, msg.sender, to_send)
-            },
+            }
         }
     } else {
         let send = send_amount(to_send, msg.receiver.clone());
@@ -467,14 +486,15 @@ fn receive_create_lockup(
 
     let config = CONFIG.load(deps.storage)?;
 
-    let admin = LockupInitMsg {admin: contract};
+    let admin = LockupInitMsg { admin: contract };
     let init_msg: CosmosMsg = WasmMsg::Instantiate {
         admin: None,
         msg: to_binary(&admin)?,
         code_id: config.lockup_id,
         label: format!("Lockup {}", channel),
         funds: vec![],
-    }.into();
+    }
+    .into();
 
     let submsg = SubMsg::reply_always(init_msg, LOCKUP_ID);
 
@@ -560,7 +580,8 @@ fn create_lockup_msg(contract_addr: String, msg: Binary, fund: &Amount) -> Cosmo
         contract_addr,
         msg,
         funds: coins(fund.amount().u128(), fund.denom()),
-    }.into();
+    }
+    .into();
 
     wasm_msg
 }
