@@ -21,8 +21,8 @@ pub fn mock_channel_info(channel_id: &str) -> ChannelInfo {
     ChannelInfo {
         id: channel_id.to_string(),
         counterparty_endpoint: IbcEndpoint {
-            port_id: REMOTE_PORT.into(),
-            channel_id: format!("{}5", channel_id),
+            port_id: "their_port".to_string(),
+            channel_id: "channel-7".to_string(),
         },
         connection_id: CONNECTION_ID.into(),
     }
