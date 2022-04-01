@@ -548,7 +548,7 @@ mod test {
             _ => return Err(StdError::generic_err("Invalid cosmMsg")),
         };
 
-        return Ok(());
+        Ok(())
     }
 
     fn get_gamm_ack(data: &Binary) -> StdResult<AmountResultAck> {
@@ -658,7 +658,7 @@ mod test {
             res.messages[0]
         );
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        matches!(ack, Ics20Ack::Result(_));
+        assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // only need to call reply block on error case
 
@@ -688,13 +688,6 @@ mod test {
         // prepare some mock packets
         let swap_packet = mock_ibc_rcv_packet(send_channel, &swap_packet_data);
 
-        // cannot receive this denom yet
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), swap_packet.clone()).unwrap();
-        assert!(res.messages.is_empty());
-        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        let no_funds = Ics20Ack::Error(ContractError::InsufficientFunds {}.to_string());
-        assert_eq!(ack, no_funds);
-
         // we transfer some tokens
         let msg = ExecuteMsg::Transfer(TransferMsg {
             channel: send_channel.to_string(),
@@ -715,7 +708,7 @@ mod test {
         check_gamm_submsg(res.messages[0].clone(), SWAP_ID, "swap").unwrap();
 
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        matches!(ack, Ics20Ack::Result(_));
+        assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate swap reply
         let reply_msg = mock_reply_msg(SWAP_ID, swap_events_mock());
@@ -792,7 +785,7 @@ mod test {
         check_gamm_submsg(res.messages[0].clone(), JOIN_POOL_ID, "join").unwrap();
 
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        matches!(ack, Ics20Ack::Result(_));
+        assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate join_pool reply
         let reply_msg = mock_reply_msg(JOIN_POOL_ID, join_pool_events_mock());
@@ -811,7 +804,7 @@ mod test {
         check_gamm_submsg(res.messages[0].clone(), EXIT_POOL_ID, "exit").unwrap();
 
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
-        matches!(ack, Ics20Ack::Result(_));
+        assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // query channel state
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
@@ -829,5 +822,44 @@ mod test {
                 Amount::native(987654321, denom)
             ]
         );
+    }
+
+    #[test]
+    fn reply_on_errors() {
+        let send_channel = "channel-9";
+        let mut deps = setup(&["channel-1", "channel-7", send_channel]);
+        let denom = "uosmo";
+        let error_msg = "Invalid operation".to_string();
+
+        let join_pool = OsmoPacket::JoinPool(JoinPoolPacket {
+            pool_id: 1u8.into(),
+            share_out_min_amount: 1u8.into(),
+        });
+        let reply_msg = Reply {
+            id: SWAP_ID,
+            result: ContractResult::Err(error_msg.clone()),
+        };
+
+        // Transfer initial tokens
+        let msg = ExecuteMsg::Transfer(TransferMsg {
+            channel: send_channel.to_string(),
+            remote_address: "my-remote-address".to_string(),
+            timeout: None,
+        });
+        let info = mock_info("local-sender", &coins(1000, denom));
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // Join pool to simulate reply
+        let join_packet = mock_ibc_rcv_packet(
+            send_channel,
+            &mock_ics20_data(1000, denom, "", Some(join_pool)),
+        );
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), join_packet).unwrap();
+        assert_eq!(1, res.messages.len());
+
+        // Reply with error result
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        let ack: Ics20Ack = from_binary(&res.data.unwrap()).unwrap();
+        assert!(matches!(ack, Ics20Ack::Error(err) if err == error_msg));
     }
 }
