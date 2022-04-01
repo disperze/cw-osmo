@@ -464,6 +464,7 @@ mod test {
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{coins, to_vec, IbcEndpoint, Timestamp, Uint128, Uint64};
+    use serde::Serialize;
 
     #[test]
     fn check_ack_json() {
@@ -522,22 +523,34 @@ mod test {
         )
     }
 
-    fn mock_receive_packet(
-        my_channel: &str,
+    fn mock_ics20_data(
         amount: u128,
         denom: &str,
         receiver: &str,
-    ) -> IbcPacket {
-        let data = Ics20Packet {
+        action: Option<OsmoPacket>,
+    ) -> Ics20Packet {
+        Ics20Packet {
             // this is returning a foreign (our) token, thus denom is <port>/<channel>/<denom>
             denom: format!("{}/{}/{}", REMOTE_PORT, "channel-1234", denom),
             amount: amount.into(),
             sender: "remote-sender".to_string(),
             receiver: receiver.to_string(),
-            action: None,
-        };
-        print!("Packet denom: {}", &data.denom);
-        IbcPacket::new(
+            action,
+        }
+    }
+    fn mock_receive_packet(
+        my_channel: &str,
+        amount: u128,
+        denom: &str,
+        receiver: &str,
+    ) -> IbcPacketReceiveMsg {
+        let data = mock_ics20_data(amount, denom, receiver, None);
+
+        mock_ibc_rcv_packet(my_channel, &data)
+    }
+
+    fn mock_ibc_rcv_packet(my_channel: &str, data: &impl Serialize) -> IbcPacketReceiveMsg {
+        IbcPacketReceiveMsg::new(IbcPacket::new(
             to_binary(&data).unwrap(),
             IbcEndpoint {
                 port_id: REMOTE_PORT.to_string(),
@@ -549,7 +562,7 @@ mod test {
             },
             3,
             Timestamp::from_seconds(1665321069).into(),
-        )
+        ))
     }
 
     #[test]
@@ -564,8 +577,7 @@ mod test {
         let recv_high_packet = mock_receive_packet(send_channel, 1876543210, denom, "local-rcpt");
 
         // cannot receive this denom yet
-        let msg = IbcPacketReceiveMsg::new(recv_packet.clone());
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), recv_packet.clone()).unwrap();
         assert!(res.messages.is_empty());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         let no_funds = Ics20Ack::Error(ContractError::InsufficientFunds {}.to_string());
@@ -586,15 +598,13 @@ mod test {
         assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
 
         // cannot receive more than we sent
-        let msg = IbcPacketReceiveMsg::new(recv_high_packet);
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), recv_high_packet).unwrap();
         assert!(res.messages.is_empty());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert_eq!(ack, no_funds);
 
         // we can receive less than we sent
-        let msg = IbcPacketReceiveMsg::new(recv_packet);
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), recv_packet).unwrap();
         assert_eq!(1, res.messages.len());
         assert_eq!(
             native_payment(876543210, denom, "local-rcpt"),
@@ -610,4 +620,5 @@ mod test {
         assert_eq!(state.balances, vec![Amount::native(111111111, denom)]);
         assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
     }
+
 }
