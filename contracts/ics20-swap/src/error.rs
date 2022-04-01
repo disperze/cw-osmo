@@ -70,6 +70,9 @@ pub enum ContractError {
 
     #[error("Only support one lockup account by channel")]
     OnlyLockupByChannel {},
+
+    #[error("No found lockup account")]
+    LockupNotFound {},
 }
 
 impl From<FromUtf8Error> for ContractError {
