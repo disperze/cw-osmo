@@ -4,7 +4,10 @@
 
 Cosmwasm contracts to connect Juno and Osmosis zone.
 
-## List
+| Utilities     | Crates.io                                                                                                                  | Docs                                                                              |
+|---------------|----------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| cw-osmo-proto | [![cw-osmo-proto on crates.io](https://img.shields.io/crates/v/cw-osmo-proto.svg)](https://crates.io/crates/cw-osmo-proto) | [![Docs](https://docs.rs/cw-osmo-proto/badge.svg)](https://docs.rs/cw-osmo-proto) |
+
 
 | Contract   |                                  |
 |------------|----------------------------------|
