@@ -2,12 +2,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{IbcEndpoint, StdResult, Storage, Uint128};
-use cw_controllers::Admin;
 use cw_storage_plus::{Item, Map};
 
 use crate::ContractError;
-
-pub const ADMIN: Admin = Admin::new("admin");
 
 pub const CONFIG: Item<Config> = Item::new("ics20_config");
 

@@ -8,8 +8,6 @@ use crate::state::ChannelInfo;
 pub struct InitMsg {
     /// Default timeout for ics20 packets, specified in seconds
     pub default_timeout: u64,
-    /// who can allow more contracts
-    pub admin: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -17,8 +15,6 @@ pub struct InitMsg {
 pub enum ExecuteMsg {
     /// This allows us to transfer *exactly one* native token
     Transfer(TransferMsg),
-    /// Change the admin (must be called by current admin)
-    UpdateAdmin { admin: String },
 }
 
 /// This is the message we accept via Receive
@@ -44,10 +40,8 @@ pub enum QueryMsg {
     /// Returns the details of the name channel, error if not created.
     /// Return type: ChannelResponse.
     Channel { id: String },
-    /// Show the Config. Returns ConfigResponse (currently including admin as well)
+    /// Show the Config. Returns ConfigResponse
     Config {},
-    /// Return AdminResponse
-    Admin {},
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -74,5 +68,4 @@ pub struct PortResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ConfigResponse {
     pub default_timeout: u64,
-    pub admin: String,
 }
