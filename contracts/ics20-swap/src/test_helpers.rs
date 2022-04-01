@@ -4,11 +4,11 @@ use crate::contract::instantiate;
 use crate::ibc::{ibc_channel_connect, ibc_channel_open, ICS20_ORDERING, ICS20_VERSION};
 use crate::state::ChannelInfo;
 
-use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init, mock_info, MockApi, MockQuerier, MockStorage};
-use cosmwasm_std::{
-    Attribute, DepsMut, Event, IbcEndpoint,
-    OwnedDeps,
+use cosmwasm_std::testing::{
+    mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
+    mock_info, MockApi, MockQuerier, MockStorage,
 };
+use cosmwasm_std::{Attribute, DepsMut, Event, IbcEndpoint, OwnedDeps};
 
 use crate::msg::InitMsg;
 
