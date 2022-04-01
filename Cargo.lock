@@ -178,7 +178,6 @@ version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-controllers",
  "cw-osmo-proto",
  "cw-storage-plus",
  "cw-utils",

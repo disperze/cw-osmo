@@ -14,7 +14,7 @@ use crate::msg::{
     ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, PortResponse,
     QueryMsg, TransferMsg,
 };
-use crate::state::{increase_channel_balance, Config, ADMIN, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
+use crate::state::{increase_channel_balance, Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
 use cw_utils::one_coin;
 
 // version info for migration info
@@ -23,7 +23,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    mut deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
     msg: InitMsg,
@@ -33,9 +33,6 @@ pub fn instantiate(
         default_timeout: msg.default_timeout,
     };
     CONFIG.save(deps.storage, &cfg)?;
-
-    let admin = deps.api.addr_validate(&msg.admin)?;
-    ADMIN.set(deps.branch(), Some(admin))?;
 
     Ok(Response::default())
 }
@@ -51,10 +48,6 @@ pub fn execute(
         ExecuteMsg::Transfer(msg) => {
             let coin = one_coin(&info)?;
             execute_transfer(deps, env, msg, Amount::Native(coin), info.sender)
-        }
-        ExecuteMsg::UpdateAdmin { admin } => {
-            let admin = deps.api.addr_validate(&admin)?;
-            Ok(ADMIN.execute_update_admin(deps, info, Some(admin))?)
         }
     }
 }
@@ -118,7 +111,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::ListChannels {} => to_binary(&query_list(deps)?),
         QueryMsg::Channel { id } => to_binary(&query_channel(deps, id)?),
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
-        QueryMsg::Admin {} => to_binary(&ADMIN.query_admin(deps)?),
     }
 }
 
@@ -163,10 +155,8 @@ pub fn query_channel(deps: Deps, id: String) -> StdResult<ChannelResponse> {
 
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let cfg = CONFIG.load(deps.storage)?;
-    let admin = ADMIN.get(deps)?.unwrap_or_else(|| Addr::unchecked(""));
     let res = ConfigResponse {
         default_timeout: cfg.default_timeout,
-        admin: admin.into(),
     };
     Ok(res)
 }
