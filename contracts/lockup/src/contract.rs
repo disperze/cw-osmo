@@ -49,7 +49,6 @@ pub fn reply_lock(reply: Reply) -> Result<Response, ContractError> {
 pub fn reply_unlock(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            // TODO: get timestamp from logs or data, osmosis issue#
             let lock_id = parse_lock_id_result(tx.events)?;
             let req = lockup::LockedRequest { lock_id };
             let res: lockup::LockedResponse = query_proto(deps.as_ref(), req)?;
@@ -69,31 +68,6 @@ pub fn reply_unlock(deps: DepsMut, reply: Reply) -> Result<Response, ContractErr
         }
         ContractResult::Err(err) => Err(StdError::generic_err(err).into()),
     }
-}
-
-const LOCKUP_EVENT: &str = "begin_unlock";
-const LOCKUP_ATTR_ID: &str = "period_lock_id";
-
-pub fn parse_lock_id_result(events: Vec<Event>) -> Result<u64, ContractError> {
-    for ev in events {
-        if ev.ty.ne(LOCKUP_EVENT) {
-            continue;
-        }
-
-        for attr in ev.attributes {
-            if attr.key.eq(LOCKUP_ATTR_ID) {
-                let lock_id = attr
-                    .value
-                    .parse::<u64>()
-                    .map_err(|_| ContractError::NoFoundLockId {})?;
-
-                return Ok(lock_id);
-            }
-        }
-        break;
-    }
-
-    Err(ContractError::NoFoundLockId {})
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -218,6 +192,31 @@ pub fn execute_claim(
         .add_attribute("amount", balance.amount))
 }
 
+const LOCKUP_EVENT: &str = "begin_unlock";
+const LOCKUP_ATTR_ID: &str = "period_lock_id";
+
+pub fn parse_lock_id_result(events: Vec<Event>) -> Result<u64, ContractError> {
+    for ev in events {
+        if ev.ty.ne(LOCKUP_EVENT) {
+            continue;
+        }
+
+        for attr in ev.attributes {
+            if attr.key.eq(LOCKUP_ATTR_ID) {
+                let lock_id = attr
+                    .value
+                    .parse::<u64>()
+                    .map_err(|_| ContractError::NoFoundLockId {})?;
+
+                return Ok(lock_id);
+            }
+        }
+        break;
+    }
+
+    Err(ContractError::NoFoundLockId {})
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -225,9 +224,23 @@ mod test {
     use cosmwasm_std::testing::{
         mock_dependencies_with_balance, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
-    use cosmwasm_std::{coins, Empty, OwnedDeps};
+    use cosmwasm_std::{
+        attr, coins, from_binary, Binary, Empty, OwnedDeps, SubMsgExecutionResponse,
+    };
     use cw_controllers::AdminError;
     use cw_utils::PaymentError::NonPayable;
+
+    pub fn mock_lock_events() -> Vec<Event> {
+        return vec![
+            Event::new("begin_unlock").add_attributes(vec![
+                attr("period_lock_id", "16"),
+                attr("owner", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
+                attr("duration", "336h0m0s"),
+                attr("unlock_time", "0001-01-01 00:00:00 +0000 UTC"),
+            ]),
+            Event::new("message").add_attributes(vec![attr("action", "begin_unlocking")]),
+        ];
+    }
 
     fn setup_init() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
         let mut deps = mock_dependencies_with_balance(&coins(1250u128, "uosmo"));
@@ -260,6 +273,21 @@ mod test {
         let sender = mock_info("owner", &coins(1000u128, denom));
         let res = execute(deps.as_mut(), mock_env(), sender, msg).unwrap();
         assert_eq!(1, res.messages.len());
+
+        // Simulate reply result
+        let data = Binary::from_base64("CAE=").unwrap(); // id: 1
+        let reply_msg = Reply {
+            id: LOCK_TOKEN_ID,
+            result: ContractResult::Ok(SubMsgExecutionResponse {
+                events: mock_lock_events(),
+                data: Some(data),
+            }),
+        };
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+
+        let lock_res: LockResult = from_binary(&res.data.unwrap()).unwrap();
+        assert_eq!(Uint64::new(1u64), lock_res.lock_id);
     }
 
     #[test]
@@ -323,5 +351,14 @@ mod test {
         let sender = mock_info("owner", &[]);
         let res = execute(deps.as_mut(), mock_env(), sender, msg).unwrap();
         assert_eq!(1, res.messages.len());
+    }
+
+    #[test]
+    fn parse_lock_result() {
+        let err = parse_lock_id_result(vec![]).unwrap_err();
+        assert_eq!(err, ContractError::NoFoundLockId {});
+
+        let res = parse_lock_id_result(mock_lock_events()).unwrap();
+        assert_eq!(16u64, res);
     }
 }
