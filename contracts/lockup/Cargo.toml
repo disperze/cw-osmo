@@ -4,7 +4,9 @@ version = "0.1.0"
 authors = ["Giancarlos Salas <me@giansalex.dev>"]
 edition = "2018"
 description = "Osmosis lockup account"
+repository = "https://github.com/disperze/cw-osmo"
 license = "MIT"
+keywords = ["osmosis", "cosmwasm"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
