@@ -2,7 +2,7 @@ use cosmwasm_std::{
     attr, coins, entry_point, from_binary, to_binary, BankMsg, Binary, Coin, ContractResult,
     CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response,
     SubMsg, WasmMsg,
 };
 
@@ -142,7 +142,7 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
         ContractResult::Ok(tx) => {
             let data = tx
                 .data
-                .ok_or_else(|| StdError::generic_err("Missing reply data"))?;
+                .ok_or_else(|| ContractError::MissingReplyData {})?;
             let token: Coin = from_binary(&data)?;
             let reply_args = REPLY_ARGS.load(deps.storage)?;
             increase_channel_balance(
@@ -171,7 +171,7 @@ pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, Cont
         ContractResult::Ok(tx) => {
             let data = tx
                 .data
-                .ok_or_else(|| StdError::generic_err("Missing reply data"))?;
+                .ok_or_else(|| ContractError::MissingReplyData {})?;
 
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
@@ -689,6 +689,7 @@ mod test {
         coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult, SubMsgExecutionResponse,
         Timestamp, Uint128, Uint64,
     };
+    use serde::de::DeserializeOwned;
     use serde::Serialize;
 
     #[test]
@@ -772,21 +773,20 @@ mod test {
         Ok(())
     }
 
-    fn get_gamm_ack(data: &Binary) -> StdResult<AmountResultAck> {
+    fn get_ack_result<T: DeserializeOwned>(data: &Binary) -> StdResult<T> {
         let ack: Ics20Ack = from_binary(data).unwrap();
         match ack {
             Ics20Ack::Result(data) => {
-                let result: AmountResultAck = from_binary(&data).unwrap();
-                Ok(result)
+                Ok(from_binary(&data).unwrap())
             }
             Ics20Ack::Error(err) => Err(StdError::generic_err(err)),
         }
     }
 
-    fn mock_reply_msg(id: u64, events: Vec<Event>) -> Reply {
+    fn mock_reply_msg(id: u64, events: Vec<Event>, data: Option<Binary>) -> Reply {
         Reply {
             id,
-            result: ContractResult::Ok(SubMsgExecutionResponse { events, data: None }),
+            result: ContractResult::Ok(SubMsgExecutionResponse { events, data }),
         }
     }
 
@@ -932,11 +932,11 @@ mod test {
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate swap reply
-        let reply_msg = mock_reply_msg(SWAP_ID, mock_swap_events());
+        let reply_msg = mock_reply_msg(SWAP_ID, mock_swap_events(), None);
 
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
-        let gamm_ack = get_gamm_ack(&res.data.unwrap()).unwrap();
+        let gamm_ack: AmountResultAck = get_ack_result(&res.data.unwrap()).unwrap();
         let gamm_ack_exp = AmountResultAck {
             amount: Uint128::new(36601070u128),
             denom: swap_denom.to_string(),
@@ -1009,10 +1009,10 @@ mod test {
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate join_pool reply
-        let reply_msg = mock_reply_msg(JOIN_POOL_ID, mock_join_pool_events());
+        let reply_msg = mock_reply_msg(JOIN_POOL_ID, mock_join_pool_events(), None);
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
-        let gamm_ack = get_gamm_ack(&res.data.unwrap()).unwrap();
+        let gamm_ack: AmountResultAck = get_ack_result(&res.data.unwrap()).unwrap();
         let gamm_ack_exp = AmountResultAck {
             amount: Uint128::new(74196993097318119147u128),
             denom: pool_denom.to_string(),
@@ -1050,6 +1050,7 @@ mod test {
         let send_channel = "channel-9";
         let mut deps = setup(&["channel-1", "channel-7", send_channel]);
         let denom = "uosmo";
+        let lockup_contract = "lockup-addr".to_string();
 
         let lockup = OsmoPacket::LockupAccount {};
         let unlock = OsmoPacket::Unlock(UnlockPacket { id: 1u64.into() });
@@ -1061,7 +1062,7 @@ mod test {
         let lockup_packet = mock_ibc_rcv_packet(send_channel, &lockup_packet_data);
         let unlock_packet = mock_ibc_rcv_packet(send_channel, &unlock_packet_data);
 
-        // we transfer some tokens
+        // we transfer some tokens to register denom
         let msg = ExecuteMsg::Transfer(TransferMsg {
             channel: send_channel.to_string(),
             remote_address: "my-remote-address".to_string(),
@@ -1070,7 +1071,7 @@ mod test {
         let info = mock_info("local-sender", &coins(987654321, denom));
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        // query channel state|_|
+        // verify channel balances
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
         assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
         assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
@@ -1083,24 +1084,23 @@ mod test {
         let no_lockup_account = Ics20Ack::Error(ContractError::LockupNotFound {}.to_string());
         assert_eq!(ack, no_lockup_account);
 
-        // Lockup account action
+        // Create Lockup account action
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), lockup_packet).unwrap();
         assert_eq!(1, res.messages.len());
 
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
-        // Save lockup contract
-        let lockup_contract = "lockup-addr".to_string();
-        LOCKUP
-            .save(
-                deps.as_mut().storage,
-                (send_channel, lockup_packet_data.sender.as_str()),
-                &lockup_contract,
-            )
-            .unwrap();
+        // Simulate reply lockup created (MsgInstantiateContractResponse {address: "lockup-addr"})
+        let init_ctr_response = Binary::from_base64("Cgtsb2NrdXAtYWRkcg==").unwrap();
+        let reply_msg = mock_reply_msg(LOCKUP_ID, vec![], Some(init_ctr_response));
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
 
-        // Unlock tokens action on invalid channel
+        let ack: LockupAck = get_ack_result(&res.data.unwrap()).unwrap();
+        assert_eq!(ack.contract, lockup_contract);
+
+        // Unlock action with error reply (no found lockup id).
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), unlock_packet).unwrap();
         assert_eq!(1, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
@@ -1114,6 +1114,15 @@ mod test {
             }),
             ..
         } if id == UNLOCK_TOKEN_ID && reply_on.clone() == ReplyOn::Always && contract_addr.eq(&lockup_contract)));
+
+        let reply_msg = Reply {
+            id: UNLOCK_TOKEN_ID,
+            result: ContractResult::Err("No found lockup id".to_string()),
+        };
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        let ack: Ics20Ack = from_binary(&res.data.unwrap()).unwrap();
+        assert!(matches!(ack, Ics20Ack::Error(_)));
 
         // query channel state
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();

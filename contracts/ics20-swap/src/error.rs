@@ -56,6 +56,9 @@ pub enum ContractError {
     #[error("Got a submessage reply with unknown id: {id}")]
     UnknownReplyId { id: u64 },
 
+    #[error("Missing reply data")]
+    MissingReplyData {},
+
     #[error("Only the governance contract can do this")]
     Unauthorized,
 
