@@ -122,7 +122,7 @@ pub fn execute(
             let coin = one_coin(&info)?;
             execute_lock(deps, info, duration, coin, contract)
         }
-        ExecuteMsg::Exit { id } => execute_exit(deps, info, contract, id),
+        ExecuteMsg::Unlock { id } => execute_unlock(deps, info, contract, id),
         ExecuteMsg::Claim { denom } => execute_claim(deps, info, contract, denom),
         ExecuteMsg::UpdateAdmin { admin } => {
             let admin = deps.api.addr_validate(&admin)?;
@@ -159,7 +159,7 @@ pub fn execute_lock(
         .add_attribute("duration", duration.to_string()))
 }
 
-pub fn execute_exit(
+pub fn execute_unlock(
     deps: DepsMut,
     info: MessageInfo,
     contract: String,
@@ -298,5 +298,22 @@ mod test {
                 amount: coins(1250u128, denom),
             }))
         );
+    }
+
+    #[test]
+    fn execute_unlock() {
+        let mut deps = setup_init();
+
+        let msg = ExecuteMsg::Unlock { id: 1u64.into() };
+
+        // unlock token: Invalid owner
+        let sender = mock_info("any", &[]);
+        let err = execute(deps.as_mut(), mock_env(), sender, msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::Admin(AdminError::NotAdmin {}));
+
+        // unlock token: Valid owner
+        let sender = mock_info("owner", &[]);
+        let res = execute(deps.as_mut(), mock_env(), sender, msg).unwrap();
+        assert_eq!(1, res.messages.len());
     }
 }
