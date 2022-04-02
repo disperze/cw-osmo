@@ -11,7 +11,7 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    /// Lock exactly one native token
+    /// Lock exactly one LP token (duration in seconds)
     Lock { duration: Uint64 },
     /// Begin unlocking tokens
     Unlock { id: Uint64 },
