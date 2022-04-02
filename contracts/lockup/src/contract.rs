@@ -13,6 +13,8 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, LockResult, UnlockResult};
 use crate::state::ADMIN;
 
+use cw_utils::{nonpayable, one_coin};
+
 const CONTRACT_NAME: &str = "crates.io:cw-osmo-lockup";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -165,6 +167,8 @@ pub fn execute_unlock(
     contract: String,
     lock_id: Uint64,
 ) -> Result<Response, ContractError> {
+    nonpayable(&info)?;
+
     if lock_id.is_zero() {
         return Err(ContractError::InvalidLockId {});
     }
@@ -189,6 +193,8 @@ pub fn execute_claim(
     contract: String,
     denom: String,
 ) -> Result<Response, ContractError> {
+    nonpayable(&info)?;
+
     if denom.is_empty() {
         return Err(ContractError::InvalidEmptyDenom {});
     }
@@ -212,15 +218,6 @@ pub fn execute_claim(
         .add_attribute("amount", balance.amount))
 }
 
-fn one_coin(info: &MessageInfo) -> Result<Coin, ContractError> {
-    if info.funds.len() != 1 {
-        return Err(ContractError::NoOneToken {});
-    }
-
-    let coin = &info.funds[0];
-    Ok(coin.clone())
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -230,6 +227,7 @@ mod test {
     };
     use cosmwasm_std::{coins, Empty, OwnedDeps};
     use cw_controllers::AdminError;
+    use cw_utils::PaymentError::NonPayable;
 
     fn setup_init() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
         let mut deps = mock_dependencies_with_balance(&coins(1250u128, "uosmo"));
@@ -280,8 +278,13 @@ mod test {
 
         // Claim rewards: valid owner, no valid denom
         let sender = mock_info("owner", &[]);
-        let err = execute(deps.as_mut(), mock_env(), sender, msg).unwrap_err();
+        let err = execute(deps.as_mut(), mock_env(), sender, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::NoBalance {});
+
+        // Claim rewards: error funds
+        let sender = mock_info("any", &coins(1u128, "uatom"));
+        let err = execute(deps.as_mut(), mock_env(), sender, msg).unwrap_err();
+        assert_eq!(err, ContractError::Payment(NonPayable {}));
 
         // Claim rewards: valid owner, valid amount
         let msg = ExecuteMsg::Claim {
@@ -310,6 +313,11 @@ mod test {
         let sender = mock_info("any", &[]);
         let err = execute(deps.as_mut(), mock_env(), sender, msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Admin(AdminError::NotAdmin {}));
+
+        // unlock token: error funds
+        let sender = mock_info("any", &coins(1u128, "uatom"));
+        let err = execute(deps.as_mut(), mock_env(), sender, msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::Payment(NonPayable {}));
 
         // unlock token: Valid owner
         let sender = mock_info("owner", &[]);
