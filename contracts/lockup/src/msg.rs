@@ -14,7 +14,7 @@ pub enum ExecuteMsg {
     /// Lock exactly one native token
     Lock { duration: Uint64 },
     /// Begin unlocking tokens
-    Exit { id: Uint64 },
+    Unlock { id: Uint64 },
     /// Claim contract balance (only admin)
     Claim { denom: String },
     /// Change the admin (must be called by current admin)
