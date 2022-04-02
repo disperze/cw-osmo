@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, BankMsg, Coin, ContractResult, CosmosMsg, DepsMut, Env, Event, MessageInfo, Reply,
-    Response, StdError, SubMsg, Timestamp, Uint64,
+    to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps, DepsMut, Env, Event,
+    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Timestamp, Uint64,
 };
 use cw2::set_contract_version;
 use cw_osmo_proto::osmosis::lockup;
@@ -10,7 +10,7 @@ use cw_osmo_proto::proto_ext::{proto_decode, MessageExt};
 use cw_osmo_proto::query::query_proto;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, LockResult, UnlockResult};
+use crate::msg::{ExecuteMsg, InstantiateMsg, LockResult, QueryMsg, UnlockResult};
 use crate::state::ADMIN;
 
 use cw_utils::{nonpayable, one_coin};
@@ -192,6 +192,13 @@ pub fn execute_claim(
         .add_attribute("amount", balance.amount))
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Admin {} => to_binary(&ADMIN.query_admin(deps)?),
+    }
+}
+
 const LOCKUP_EVENT: &str = "begin_unlock";
 const LOCKUP_ATTR_ID: &str = "period_lock_id";
 
@@ -227,7 +234,7 @@ mod test {
     use cosmwasm_std::{
         attr, coins, from_binary, Binary, Empty, OwnedDeps, SubMsgExecutionResponse,
     };
-    use cw_controllers::AdminError;
+    use cw_controllers::{AdminError, AdminResponse};
     use cw_utils::PaymentError::NonPayable;
 
     pub fn mock_lock_events() -> Vec<Event> {
@@ -360,5 +367,15 @@ mod test {
 
         let res = parse_lock_id_result(mock_lock_events()).unwrap();
         assert_eq!(16u64, res);
+    }
+
+    #[test]
+    fn query_admin() {
+        let deps = setup_init();
+
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::Admin {}).unwrap();
+        let admin: AdminResponse = from_binary(&res).unwrap();
+
+        assert_eq!("owner", admin.admin.unwrap().as_str())
     }
 }
