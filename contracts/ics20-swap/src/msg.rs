@@ -44,6 +44,12 @@ pub enum QueryMsg {
     Channel { id: String },
     /// Show the Config. Returns ConfigResponse
     Config {},
+    /// Returns the lockup address of the channel and owner, empty if not created.
+    /// Return type: LockupResponse.
+    Lockup { channel: String, owner: String },
+    /// Show all lockups created by channel.
+    /// Return type: ListLockupResponse.
+    AllLockups { channel: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -75,4 +81,17 @@ pub struct ConfigResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct LockupInitMsg {
     pub admin: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct LockupResponse {
+    /// Lockup owner
+    pub owner: String,
+    /// Lockup contract address
+    pub address: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct ListLockupResponse {
+    pub lockups: Vec<LockupResponse>,
 }
