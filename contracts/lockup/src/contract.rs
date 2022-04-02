@@ -376,6 +376,6 @@ mod test {
         let res = query(deps.as_ref(), mock_env(), QueryMsg::Admin {}).unwrap();
         let admin: AdminResponse = from_binary(&res).unwrap();
 
-        assert_eq!("owner", admin.admin.unwrap().as_str())
+        assert_eq!("owner", admin.admin.unwrap().as_str());
     }
 }
