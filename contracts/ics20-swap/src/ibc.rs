@@ -1126,7 +1126,7 @@ mod test {
             &lockup_contract,
         );
 
-        // Unlock action with error reply (no found lockup id).
+        // Unlock tokens action.
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), unlock_packet).unwrap();
         assert_eq!(1, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
@@ -1138,6 +1138,14 @@ mod test {
             &lockup_contract,
         );
 
+        // Simluate unlock reply success
+        let reply_msg = mock_reply_msg(UNLOCK_TOKEN_ID, vec![], Some(Binary::from(&[1])));
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        let ack: Ics20Ack = from_binary(&res.data.unwrap()).unwrap();
+        assert!(matches!(ack, Ics20Ack::Result(_)));
+
+        // Simluate unlock reply error
         let reply_msg = Reply {
             id: UNLOCK_TOKEN_ID,
             result: ContractResult::Err("No found lockup id".to_string()),
