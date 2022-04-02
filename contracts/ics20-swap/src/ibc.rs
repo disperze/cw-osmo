@@ -120,7 +120,7 @@ pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, Con
 
                     LOCKUP.save(
                         deps.storage,
-                        reply_args.channel.as_str(),
+                        (&reply_args.channel, &reply_args.sender),
                         &data.contract_address,
                     )?;
                     let ack = LockuptAck {
@@ -327,6 +327,7 @@ fn do_ibc_packet_receive(
         channel: channel.clone(),
         denom: denom.to_string(),
         amount: msg.amount,
+        sender: msg.sender.clone(),
     };
     REPLY_ARGS.save(deps.storage, &reply_args)?;
     let to_send = Amount::from_parts(denom.to_string(), msg.amount);
@@ -342,7 +343,7 @@ fn do_ibc_packet_receive(
                 receive_exit_pool(exit_pool, msg.sender, to_send, contract)
             }
             OsmoPacket::LockupAccount {} => {
-                receive_create_lockup(deps, &channel, to_send, contract)
+                receive_create_lockup(deps, &channel, msg.sender, to_send, contract)
             }
             OsmoPacket::Lock(lock) => {
                 receive_lock_tokens(deps, &channel, lock, msg.sender, to_send)
@@ -473,10 +474,12 @@ fn receive_exit_pool(
 fn receive_create_lockup(
     deps: DepsMut,
     channel: &str,
+    sender: String,
     token_in: Amount,
     contract: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    if LOCKUP.has(deps.storage, channel) {
+    let lockup_key = (channel, sender.as_str());
+    if LOCKUP.has(deps.storage, lockup_key) {
         return Err(ContractError::OnlyLockupByChannel {});
     }
 
@@ -514,8 +517,9 @@ fn receive_lock_tokens(
     sender: String,
     token_in: Amount,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    let lock_key = (channel, sender.as_str());
     let lockup_contract = LOCKUP
-        .load(deps.storage, channel)
+        .load(deps.storage, lock_key)
         .map_err(|_| ContractError::LockupNotFound {})?;
 
     let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lock)?, &token_in);
@@ -540,8 +544,9 @@ fn receive_claim_tokens(
     sender: String,
     token_in: Amount,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    let lock_key = (channel, sender.as_str());
     let lockup_contract = LOCKUP
-        .load(deps.storage, channel)
+        .load(deps.storage, lock_key)
         .map_err(|_| ContractError::LockupNotFound {})?;
 
     let exec_msg = create_lockup_msg(lockup_contract, to_binary(&claim)?, &token_in);
@@ -564,8 +569,9 @@ fn receive_unlock_tokens(
     sender: String,
     token_in: Amount,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    let lock_key = (channel, sender.as_str());
     let lockup_contract = LOCKUP
-        .load(deps.storage, channel)
+        .load(deps.storage, lock_key)
         .map_err(|_| ContractError::LockupNotFound {})?;
 
     let exec_msg = create_lockup_msg(lockup_contract, to_binary(&unlock)?, &token_in);
@@ -586,7 +592,8 @@ fn create_lockup_msg(contract_addr: String, msg: Binary, fund: &Amount) -> Cosmo
         contract_addr,
         msg,
         funds: coins(fund.amount().u128(), fund.denom()),
-    }.into()
+    }
+    .into()
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -1086,7 +1093,11 @@ mod test {
         // Save lockup contract
         let lockup_contract = "lockup-addr".to_string();
         LOCKUP
-            .save(deps.as_mut().storage, send_channel, &lockup_contract)
+            .save(
+                deps.as_mut().storage,
+                (send_channel, lockup_packet_data.sender.as_str()),
+                &lockup_contract,
+            )
             .unwrap();
 
         // Unlock tokens action on invalid channel
