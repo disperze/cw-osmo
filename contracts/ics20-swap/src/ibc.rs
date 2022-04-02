@@ -833,6 +833,18 @@ mod test {
         ))
     }
 
+    fn mock_rcv_action_packet(
+        action: OsmoPacket,
+        channel: &str,
+        amount: u128,
+        denom: &str
+    ) -> IbcPacketReceiveMsg {
+        let packet_data = mock_ics20_data(amount, denom, "", Some(action));
+        let packet = mock_ibc_rcv_packet(channel, &packet_data);
+
+        packet
+    }
+
     #[test]
     fn send_receive_native() {
         let send_channel = "channel-9";
@@ -1128,6 +1140,82 @@ mod test {
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
         assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
         assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
+    }
+
+    #[test]
+    fn receive_lock_claim_rewards() {
+        let send_channel = "channel-9";
+        let mut deps = setup(&["channel-1", "channel-7", send_channel]);
+        let denom = "uosmo";
+        let rewards = 45679u128;
+        let lockup_contract = "lockup-addr".to_string();
+
+        let lockup = OsmoPacket::LockupAccount {};
+        let claim = OsmoPacket::Claim(ClaimPacket{denom: denom.to_string()});
+
+        // prepare some mock packets
+        let lockup_packet = mock_rcv_action_packet(lockup, send_channel, 0, denom);
+        let claim_packet = mock_rcv_action_packet(claim, send_channel, 0, denom);
+
+        // we transfer some tokens to register denom
+        let msg = ExecuteMsg::Transfer(TransferMsg {
+            channel: send_channel.to_string(),
+            remote_address: "my-remote-address".to_string(),
+            timeout: None,
+        });
+        let info = mock_info("local-sender", &coins(987654321, denom));
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // verify channel balances
+        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
+        assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
+        assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
+
+        // Create Lockup account action
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), lockup_packet).unwrap();
+        assert_eq!(1, res.messages.len());
+
+        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
+        assert!(matches!(ack, Ics20Ack::Result(_)));
+
+        // Simulate reply lockup created (MsgInstantiateContractResponse {address: "lockup-addr"})
+        let init_ctr_response = Binary::from_base64("Cgtsb2NrdXAtYWRkcg==").unwrap();
+        let reply_msg = mock_reply_msg(LOCKUP_ID, vec![], Some(init_ctr_response));
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+
+        let ack: LockupAck = get_ack_result(&res.data.unwrap()).unwrap();
+        assert_eq!(ack.contract, lockup_contract);
+
+        // Claim lockup rewards.
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), claim_packet).unwrap();
+        assert_eq!(1, res.messages.len());
+        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
+        assert!(matches!(ack, Ics20Ack::Result(_)));
+        assert!(matches!(res.messages[0], SubMsg {
+            id,
+            ref reply_on,
+            msg: CosmosMsg::Wasm(WasmMsg::Execute {
+                ref contract_addr,
+                ..
+            }),
+            ..
+        } if id == CLAIM_TOKEN_ID && reply_on.clone() == ReplyOn::Always && contract_addr.eq(&lockup_contract)));
+
+        // Simulate reply rewards.
+        let rewards_data = to_binary(&coin(rewards, denom)).unwrap();
+        let reply_msg = mock_reply_msg(CLAIM_TOKEN_ID, vec![], Some(rewards_data));
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+
+        let ack: AmountResultAck = get_ack_result(&res.data.unwrap()).unwrap();
+        assert_eq!(ack.amount, Uint128::new(rewards));
+        assert_eq!(ack.denom, denom);
+
+        // query channel state
+        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
+        assert_eq!(state.balances, vec![Amount::native(987700000, denom)]);
+        assert_eq!(state.total_sent, vec![Amount::native(987700000, denom)]);
     }
 
     #[test]
