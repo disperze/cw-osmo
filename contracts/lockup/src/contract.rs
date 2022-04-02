@@ -220,3 +220,83 @@ fn one_coin(info: &MessageInfo) -> Result<Coin, ContractError> {
     let coin = &info.funds[0];
     Ok(coin.clone())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use cosmwasm_std::testing::{
+        mock_dependencies_with_balance, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
+    };
+    use cosmwasm_std::{coins, Empty, OwnedDeps};
+    use cw_controllers::AdminError;
+
+    fn setup_init() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
+        let mut deps = mock_dependencies_with_balance(&coins(1250u128, "uosmo"));
+
+        let sender = mock_info("owner", &[]);
+        let msg = InstantiateMsg {
+            admin: "owner".to_string(),
+        };
+        let res = instantiate(deps.as_mut(), mock_env(), sender, msg).unwrap();
+        assert_eq!(0, res.messages.len());
+
+        deps
+    }
+
+    #[test]
+    fn execute_lock() {
+        let mut deps = setup_init();
+        let denom = "gamm/pool/1";
+
+        let msg = ExecuteMsg::Lock {
+            duration: 86400u64.into(),
+        };
+
+        // lock token: Invalid owner
+        let sender = mock_info("any", &coins(1000u128, denom));
+        let err = execute(deps.as_mut(), mock_env(), sender, msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::Admin(AdminError::NotAdmin {}));
+
+        // lock token: Valid owner
+        let sender = mock_info("owner", &coins(1000u128, denom));
+        let res = execute(deps.as_mut(), mock_env(), sender, msg).unwrap();
+        assert_eq!(1, res.messages.len());
+    }
+
+    #[test]
+    fn execute_claim_rewards() {
+        let mut deps = setup_init();
+        let denom = "uosmo";
+
+        let msg = ExecuteMsg::Claim {
+            denom: "uatom".to_string(),
+        };
+
+        // Claim rewards: Invalid owner
+        let sender = mock_info("any", &[]);
+        let err = execute(deps.as_mut(), mock_env(), sender, msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::Admin(AdminError::NotAdmin {}));
+
+        // Claim rewards: valid owner, no valid denom
+        let sender = mock_info("owner", &[]);
+        let err = execute(deps.as_mut(), mock_env(), sender, msg).unwrap_err();
+        assert_eq!(err, ContractError::NoBalance {});
+
+        // Claim rewards: valid owner, valid amount
+        let msg = ExecuteMsg::Claim {
+            denom: denom.to_string(),
+        };
+
+        let sender = mock_info("owner", &[]);
+        let res = execute(deps.as_mut(), mock_env(), sender, msg).unwrap();
+        assert_eq!(1, res.messages.len());
+        assert_eq!(
+            res.messages[0],
+            SubMsg::new(CosmosMsg::Bank(BankMsg::Send {
+                to_address: "owner".to_string(),
+                amount: coins(1250u128, denom),
+            }))
+        );
+    }
+}
