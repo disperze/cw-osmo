@@ -114,7 +114,7 @@ pub struct LockResultAck {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct LockuptAck {
+pub struct LockupAck {
     pub contract: String,
 }
 

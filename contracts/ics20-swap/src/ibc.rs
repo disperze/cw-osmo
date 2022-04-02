@@ -10,7 +10,7 @@ use crate::amount::Amount;
 use crate::error::{ContractError, Never};
 use crate::ibc_msg::{
     parse_gamm_result, AmountResultAck, ClaimPacket, ExitPoolPacket, Ics20Ack, Ics20Packet,
-    JoinPoolPacket, LockPacket, LockuptAck, OsmoPacket, SwapPacket, UnlockPacket, Voucher,
+    JoinPoolPacket, LockPacket, LockupAck, OsmoPacket, SwapPacket, UnlockPacket, Voucher,
 };
 use crate::msg::LockupInitMsg;
 use crate::parse::{
@@ -123,7 +123,7 @@ pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, Con
                         (&reply_args.channel, &reply_args.sender),
                         &data.contract_address,
                     )?;
-                    let ack = LockuptAck {
+                    let ack = LockupAck {
                         contract: data.contract_address,
                     };
                     let data = to_binary(&ack).unwrap();
