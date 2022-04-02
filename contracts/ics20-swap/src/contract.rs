@@ -10,10 +10,10 @@ use crate::amount::Amount;
 use crate::error::ContractError;
 use crate::ibc_msg::Ics20Packet;
 use crate::msg::{
-    ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, QueryMsg,
-    TransferMsg,
+    ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, ListLockupResponse,
+    LockupResponse, QueryMsg, TransferMsg,
 };
-use crate::state::{increase_channel_balance, Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
+use crate::state::{increase_channel_balance, Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG, LOCKUP};
 use cw_utils::one_coin;
 
 // version info for migration info
@@ -110,6 +110,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::ListChannels {} => to_binary(&query_list(deps)?),
         QueryMsg::Channel { id } => to_binary(&query_channel(deps, id)?),
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
+        QueryMsg::Lockup { channel, owner } => to_binary(&query_lockup(deps, channel, owner)?),
+        QueryMsg::AllLockups { channel } => to_binary(&query_all_lockup(deps, channel)?),
     }
 }
 
@@ -152,6 +154,26 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         default_timeout: cfg.default_timeout,
     };
     Ok(res)
+}
+
+fn query_lockup(deps: Deps, channel_id: String, owner: String) -> StdResult<LockupResponse> {
+    let lockup_key = (channel_id.as_str(), owner.as_str());
+    let lockup_address = LOCKUP.load(deps.storage, lockup_key).unwrap_or_default();
+    let res = LockupResponse {
+        owner,
+        address: lockup_address,
+    };
+    Ok(res)
+}
+
+fn query_all_lockup(deps: Deps, channel_id: String) -> StdResult<ListLockupResponse> {
+    let lockups = LOCKUP
+        .prefix(channel_id.as_str())
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|r| r.map(|(owner, address)| LockupResponse { owner, address }))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(ListLockupResponse { lockups })
 }
 
 #[cfg(test)]
@@ -259,5 +281,74 @@ mod test {
                 id: "channel-45".to_string()
             }
         );
+    }
+
+    #[test]
+    fn query_lockups() {
+        let send_channel = "channel-9";
+        let sender = "remote-addr";
+        let mut deps = setup(&["channel-3", "channel-7", send_channel]);
+
+        // Empty lockups
+        let raw_list = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::AllLockups {
+                channel: send_channel.to_string(),
+            },
+        )
+        .unwrap();
+        let list_res: ListLockupResponse = from_binary(&raw_list).unwrap();
+        assert_eq!(0, list_res.lockups.len());
+
+        // Save lockup mock
+        let lockup_contract = "lockup-addr".to_string();
+        LOCKUP
+            .save(
+                deps.as_mut().storage,
+                (send_channel, sender),
+                &lockup_contract,
+            )
+            .unwrap();
+
+        // Query lockup (no found)
+        let raw_lockup = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::Lockup {
+                channel: "invalid".to_string(),
+                owner: sender.to_string(),
+            },
+        )
+        .unwrap();
+        let lockup: LockupResponse = from_binary(&raw_lockup).unwrap();
+        assert_eq!(false, lockup.owner.is_empty());
+        assert_eq!(true, lockup.address.is_empty());
+
+        // Query valid lockup
+        let raw_lockup = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::Lockup {
+                channel: send_channel.to_string(),
+                owner: sender.to_string(),
+            },
+        )
+        .unwrap();
+        let lockup: LockupResponse = from_binary(&raw_lockup).unwrap();
+        assert_eq!(false, lockup.owner.is_empty());
+        assert_eq!(false, lockup.address.is_empty());
+        assert_eq!(lockup_contract, lockup.address);
+
+        let raw_list = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::AllLockups {
+                channel: send_channel.to_string(),
+            },
+        )
+        .unwrap();
+        let list_res: ListLockupResponse = from_binary(&raw_list).unwrap();
+        assert_eq!(1, list_res.lockups.len());
     }
 }
