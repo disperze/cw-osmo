@@ -1,5 +1,6 @@
 use cosmwasm_std::StdError;
 use cw_controllers::AdminError;
+use cw_utils::PaymentError;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -9,6 +10,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     Admin(#[from] AdminError),
+
+    #[error("{0}")]
+    Payment(#[from] PaymentError),
 
     #[error("Empty balance")]
     NoBalance {},
