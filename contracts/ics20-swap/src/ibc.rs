@@ -2,8 +2,7 @@ use cosmwasm_std::{
     attr, coins, entry_point, from_binary, to_binary, BankMsg, Binary, Coin, ContractResult,
     CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response,
-    SubMsg, WasmMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, SubMsg, WasmMsg,
 };
 
 use crate::amount::Amount;
@@ -140,9 +139,7 @@ pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, Con
 pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            let data = tx
-                .data
-                .ok_or_else(|| ContractError::MissingReplyData {})?;
+            let data = tx.data.ok_or(ContractError::MissingReplyData {})?;
             let token: Coin = from_binary(&data)?;
             let reply_args = REPLY_ARGS.load(deps.storage)?;
             increase_channel_balance(
@@ -169,9 +166,7 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
 pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
         ContractResult::Ok(tx) => {
-            let data = tx
-                .data
-                .ok_or_else(|| ContractError::MissingReplyData {})?;
+            let data = tx.data.ok_or(ContractError::MissingReplyData {})?;
 
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
@@ -686,8 +681,8 @@ mod test {
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{
-        coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult, SubMsgExecutionResponse,
-        Timestamp, Uint128, Uint64,
+        coin, coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult,
+        SubMsgExecutionResponse, Timestamp, Uint128, Uint64,
     };
     use serde::de::DeserializeOwned;
     use serde::Serialize;
@@ -776,9 +771,7 @@ mod test {
     fn get_ack_result<T: DeserializeOwned>(data: &Binary) -> StdResult<T> {
         let ack: Ics20Ack = from_binary(data).unwrap();
         match ack {
-            Ics20Ack::Result(data) => {
-                Ok(from_binary(&data).unwrap())
-            }
+            Ics20Ack::Result(data) => Ok(from_binary(&data).unwrap()),
             Ics20Ack::Error(err) => Err(StdError::generic_err(err)),
         }
     }
@@ -837,12 +830,24 @@ mod test {
         action: OsmoPacket,
         channel: &str,
         amount: u128,
-        denom: &str
+        denom: &str,
     ) -> IbcPacketReceiveMsg {
         let packet_data = mock_ics20_data(amount, denom, "", Some(action));
         let packet = mock_ibc_rcv_packet(channel, &packet_data);
 
         packet
+    }
+
+    fn assert_submsg_wasm(msg: SubMsg, reply_id: u64, on: ReplyOn, contract: &String) {
+        assert!(matches!(msg, SubMsg {
+            id,
+            ref reply_on,
+            msg: CosmosMsg::Wasm(WasmMsg::Execute {
+                ref contract_addr,
+                ..
+            }),
+            ..
+        } if id == reply_id && reply_on.clone() == on && contract_addr.eq(contract)));
     }
 
     #[test]
@@ -1061,18 +1066,19 @@ mod test {
     fn receive_lockup_actions() {
         let send_channel = "channel-9";
         let mut deps = setup(&["channel-1", "channel-7", send_channel]);
-        let denom = "uosmo";
+        let denom = "gamm/pool/1";
         let lockup_contract = "lockup-addr".to_string();
 
         let lockup = OsmoPacket::LockupAccount {};
+        let lock = OsmoPacket::Lock(LockPacket {
+            duration: 86400u64.into(),
+        });
         let unlock = OsmoPacket::Unlock(UnlockPacket { id: 1u64.into() });
 
-        let lockup_packet_data = mock_ics20_data(0, denom, "", Some(lockup));
-        let unlock_packet_data = mock_ics20_data(0, denom, "", Some(unlock));
-
         // prepare some mock packets
-        let lockup_packet = mock_ibc_rcv_packet(send_channel, &lockup_packet_data);
-        let unlock_packet = mock_ibc_rcv_packet(send_channel, &unlock_packet_data);
+        let lockup_packet = mock_rcv_action_packet(lockup, send_channel, 0, denom);
+        let lock_packet = mock_rcv_action_packet(lock, send_channel, 54321, denom);
+        let unlock_packet = mock_rcv_action_packet(unlock, send_channel, 0, denom);
 
         // we transfer some tokens to register denom
         let msg = ExecuteMsg::Transfer(TransferMsg {
@@ -1082,11 +1088,6 @@ mod test {
         });
         let info = mock_info("local-sender", &coins(987654321, denom));
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // verify channel balances
-        let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
-        assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
-        assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
 
         // Unlock invalid, no lockup account
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), unlock_packet.clone()).unwrap();
@@ -1112,20 +1113,30 @@ mod test {
         let ack: LockupAck = get_ack_result(&res.data.unwrap()).unwrap();
         assert_eq!(ack.contract, lockup_contract);
 
+        // Lock tokens
+        let res = ibc_packet_receive(deps.as_mut(), mock_env(), lock_packet).unwrap();
+        assert_eq!(1, res.messages.len());
+
+        let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
+        assert!(matches!(ack, Ics20Ack::Result(_)));
+        assert_submsg_wasm(
+            res.messages[0].clone(),
+            LOCK_TOKEN_ID,
+            ReplyOn::Always,
+            &lockup_contract,
+        );
+
         // Unlock action with error reply (no found lockup id).
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), unlock_packet).unwrap();
         assert_eq!(1, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
-        assert!(matches!(res.messages[0], SubMsg {
-            id,
-            ref reply_on,
-            msg: CosmosMsg::Wasm(WasmMsg::Execute {
-                ref contract_addr,
-                ..
-            }),
-            ..
-        } if id == UNLOCK_TOKEN_ID && reply_on.clone() == ReplyOn::Always && contract_addr.eq(&lockup_contract)));
+        assert_submsg_wasm(
+            res.messages[0].clone(),
+            UNLOCK_TOKEN_ID,
+            ReplyOn::Always,
+            &lockup_contract,
+        );
 
         let reply_msg = Reply {
             id: UNLOCK_TOKEN_ID,
@@ -1138,7 +1149,7 @@ mod test {
 
         // query channel state
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
-        assert_eq!(state.balances, vec![Amount::native(987654321, denom)]);
+        assert_eq!(state.balances, vec![Amount::native(987600000, denom)]);
         assert_eq!(state.total_sent, vec![Amount::native(987654321, denom)]);
     }
 
@@ -1151,7 +1162,9 @@ mod test {
         let lockup_contract = "lockup-addr".to_string();
 
         let lockup = OsmoPacket::LockupAccount {};
-        let claim = OsmoPacket::Claim(ClaimPacket{denom: denom.to_string()});
+        let claim = OsmoPacket::Claim(ClaimPacket {
+            denom: denom.to_string(),
+        });
 
         // prepare some mock packets
         let lockup_packet = mock_rcv_action_packet(lockup, send_channel, 0, denom);
@@ -1192,15 +1205,12 @@ mod test {
         assert_eq!(1, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
-        assert!(matches!(res.messages[0], SubMsg {
-            id,
-            ref reply_on,
-            msg: CosmosMsg::Wasm(WasmMsg::Execute {
-                ref contract_addr,
-                ..
-            }),
-            ..
-        } if id == CLAIM_TOKEN_ID && reply_on.clone() == ReplyOn::Always && contract_addr.eq(&lockup_contract)));
+        assert_submsg_wasm(
+            res.messages[0].clone(),
+            CLAIM_TOKEN_ID,
+            ReplyOn::Always,
+            &lockup_contract,
+        );
 
         // Simulate reply rewards.
         let rewards_data = to_binary(&coin(rewards, denom)).unwrap();
