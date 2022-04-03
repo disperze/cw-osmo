@@ -843,16 +843,23 @@ mod test {
         packet
     }
 
-    fn assert_submsg_wasm(msg: SubMsg, reply_id: u64, on: ReplyOn, contract: &String) {
-        assert!(matches!(msg, SubMsg {
+    fn assert_submsg_wasm<T: DeserializeOwned + std::cmp::PartialEq>(
+        submsg: SubMsg,
+        reply_id: u64,
+        on: ReplyOn,
+        contract: &String,
+        msg_exp: T,
+    ) {
+        assert!(matches!(submsg, SubMsg {
             id,
             ref reply_on,
             msg: CosmosMsg::Wasm(WasmMsg::Execute {
                 ref contract_addr,
+                ref msg,
                 ..
             }),
             ..
-        } if id == reply_id && reply_on.clone() == on && contract_addr.eq(contract)));
+        } if id == reply_id && reply_on.clone() == on && contract_addr.eq(contract) && msg_exp.eq(&from_binary::<T>(msg).unwrap())));
     }
 
     #[test]
@@ -1124,11 +1131,15 @@ mod test {
 
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
+        let lockup_msg = LockupExecuteMsg::Lock {
+            duration: 86400u64.into(),
+        };
         assert_submsg_wasm(
             res.messages[0].clone(),
             LOCK_TOKEN_ID,
             ReplyOn::Always,
             &lockup_contract,
+            lockup_msg,
         );
 
         // Unlock tokens action.
@@ -1136,11 +1147,13 @@ mod test {
         assert_eq!(1, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
+        let lockup_msg = LockupExecuteMsg::Unlock { id: 1u64.into() };
         assert_submsg_wasm(
             res.messages[0].clone(),
             UNLOCK_TOKEN_ID,
             ReplyOn::Always,
             &lockup_contract,
+            lockup_msg,
         );
 
         // Simluate unlock reply success
@@ -1218,11 +1231,15 @@ mod test {
         assert_eq!(1, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
+        let lockup_msg = LockupExecuteMsg::Claim {
+            denom: denom.to_string(),
+        };
         assert_submsg_wasm(
             res.messages[0].clone(),
             CLAIM_TOKEN_ID,
             ReplyOn::Always,
             &lockup_contract,
+            lockup_msg,
         );
 
         // Simulate reply rewards.
