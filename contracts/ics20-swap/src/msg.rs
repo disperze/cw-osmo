@@ -1,3 +1,4 @@
+use cosmwasm_std::Uint64;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -71,11 +72,6 @@ pub struct ConfigResponse {
     pub default_timeout: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
-pub struct LockupInitMsg {
-    pub admin: String,
-}
-
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct LockupResponse {
     /// Lockup owner
@@ -87,4 +83,19 @@ pub struct LockupResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ListLockupResponse {
     pub lockups: Vec<LockupResponse>,
+}
+
+// Lockup contract InstantiateMsg
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+pub struct LockupInitMsg {
+    pub admin: String,
+}
+
+// Lockup contract ExecuteMsg
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LockupExecuteMsg {
+    Lock { duration: Uint64 },
+    Unlock { id: Uint64 },
+    Claim { denom: String },
 }

@@ -11,7 +11,7 @@ use crate::ibc_msg::{
     parse_gamm_result, AmountResultAck, ClaimPacket, ExitPoolPacket, Ics20Ack, Ics20Packet,
     JoinPoolPacket, LockPacket, LockupAck, OsmoPacket, SwapPacket, UnlockPacket, Voucher,
 };
-use crate::msg::LockupInitMsg;
+use crate::msg::{LockupExecuteMsg, LockupInitMsg};
 use crate::parse::{
     parse_pool_id, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR,
     SWAP_EVENT,
@@ -517,7 +517,10 @@ fn receive_lock_tokens(
         .load(deps.storage, lock_key)
         .map_err(|_| ContractError::LockupNotFound {})?;
 
-    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lock)?, &token_in);
+    let lockup_msg = LockupExecuteMsg::Lock {
+        duration: lock.duration,
+    };
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, &token_in);
     let submsg = SubMsg::reply_always(exec_msg, LOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
@@ -544,7 +547,8 @@ fn receive_claim_tokens(
         .load(deps.storage, lock_key)
         .map_err(|_| ContractError::LockupNotFound {})?;
 
-    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&claim)?, &token_in);
+    let lockup_msg = LockupExecuteMsg::Claim { denom: claim.denom };
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, &token_in);
     let submsg = SubMsg::reply_always(exec_msg, CLAIM_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
@@ -569,7 +573,8 @@ fn receive_unlock_tokens(
         .load(deps.storage, lock_key)
         .map_err(|_| ContractError::LockupNotFound {})?;
 
-    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&unlock)?, &token_in);
+    let lockup_msg = LockupExecuteMsg::Unlock { id: unlock.id };
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, &token_in);
     let submsg = SubMsg::reply_always(exec_msg, UNLOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
