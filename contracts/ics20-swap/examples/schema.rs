@@ -4,7 +4,7 @@ use std::fs::create_dir_all;
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
 use cw_ics20_swap::msg::{
-    ChannelResponse, ExecuteMsg, InitMsg, ListChannelsResponse, PortResponse, QueryMsg, TransferMsg,
+    ChannelResponse, ExecuteMsg, InitMsg, ListChannelsResponse, QueryMsg, TransferMsg,
 };
 
 fn main() {
@@ -19,5 +19,4 @@ fn main() {
     export_schema(&schema_for!(TransferMsg), &out_dir);
     export_schema(&schema_for!(ChannelResponse), &out_dir);
     export_schema(&schema_for!(ListChannelsResponse), &out_dir);
-    export_schema(&schema_for!(PortResponse), &out_dir);
 }
