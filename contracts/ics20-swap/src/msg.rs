@@ -106,3 +106,9 @@ pub enum LockupExecuteMsg {
     Unlock { id: Uint64 },
     Claim { denom: String },
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+pub struct MigrateMsg {
+    pub default_timeout: u64,
+    pub lock_id: u64,
+}

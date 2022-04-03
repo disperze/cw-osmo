@@ -10,10 +10,7 @@ use cw2::set_contract_version;
 use crate::amount::Amount;
 use crate::error::ContractError;
 use crate::ibc_msg::Ics20Packet;
-use crate::msg::{
-    ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, ListLockupResponse,
-    LockupResponse, PortResponse, QueryMsg, TransferMsg,
-};
+use crate::msg::{ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, ListLockupResponse, LockupResponse, MigrateMsg, PortResponse, QueryMsg, TransferMsg};
 use crate::state::{increase_channel_balance, Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG, LOCKUP};
 use cw_utils::one_coin;
 
@@ -103,6 +100,18 @@ pub fn execute_transfer(
         .add_attribute("amount", &packet.amount.to_string());
 
     Ok(res)
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
+    let config = Config {
+        default_timeout: msg.default_timeout,
+        lockup_id: msg.lock_id,
+    };
+    CONFIG.save(deps.storage, &config)?;
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(Response::new())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
