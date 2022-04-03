@@ -836,7 +836,7 @@ mod test {
             share_out_min_amount: 1u8.into(),
         });
         let reply_msg = Reply {
-            id: SWAP_ID,
+            id: JOIN_POOL_ID,
             result: ContractResult::Err(error_msg.clone()),
         };
 
