@@ -76,6 +76,9 @@ pub enum ContractError {
 
     #[error("No found lockup account")]
     LockupNotFound {},
+
+    #[error("This message does no accept funds")]
+    NonPayable {},
 }
 
 impl From<FromUtf8Error> for ContractError {
