@@ -857,6 +857,7 @@ mod test {
         on: ReplyOn,
         contract: &String,
         msg_exp: T,
+        mgs_funds: Vec<Coin>,
     ) {
         assert!(matches!(submsg, SubMsg {
             id,
@@ -864,10 +865,10 @@ mod test {
             msg: CosmosMsg::Wasm(WasmMsg::Execute {
                 ref contract_addr,
                 ref msg,
-                ..
+                funds,
             }),
             ..
-        } if id == reply_id && reply_on.clone() == on && contract_addr.eq(contract) && msg_exp.eq(&from_binary::<T>(msg).unwrap())));
+        } if id == reply_id && reply_on.clone() == on && contract_addr.eq(contract) && funds.eq(&mgs_funds) && msg_exp.eq(&from_binary::<T>(msg).unwrap())));
     }
 
     #[test]
@@ -1148,6 +1149,7 @@ mod test {
             ReplyOn::Always,
             &lockup_contract,
             lockup_msg,
+            coins(54321u128, denom),
         );
 
         // Unlock tokens action.
@@ -1162,6 +1164,7 @@ mod test {
             ReplyOn::Always,
             &lockup_contract,
             lockup_msg,
+            vec![],
         );
 
         // Simluate unlock reply success
@@ -1248,6 +1251,7 @@ mod test {
             ReplyOn::Always,
             &lockup_contract,
             lockup_msg,
+            vec![],
         );
 
         // Simulate reply rewards.
