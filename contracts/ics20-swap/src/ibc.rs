@@ -338,16 +338,19 @@ fn do_ibc_packet_receive(
                 receive_exit_pool(exit_pool, msg.sender, to_send, contract)
             }
             OsmoPacket::LockupAccount {} => {
-                receive_create_lockup(deps, &channel, msg.sender, to_send, contract)
+                nonpayable(&to_send)?;
+                receive_create_lockup(deps, &channel, msg.sender, contract)
             }
             OsmoPacket::Lock(lock) => {
                 receive_lock_tokens(deps, &channel, lock, msg.sender, to_send)
             }
             OsmoPacket::Claim(claim) => {
-                receive_claim_tokens(deps, &channel, claim, msg.sender, to_send)
+                nonpayable(&to_send)?;
+                receive_claim_tokens(deps, &channel, claim, msg.sender)
             }
             OsmoPacket::Unlock(unlock) => {
-                receive_unlock_tokens(deps, &channel, unlock, msg.sender, to_send)
+                nonpayable(&to_send)?;
+                receive_unlock_tokens(deps, &channel, unlock, msg.sender)
             }
         }
     } else {
@@ -470,16 +473,11 @@ fn receive_create_lockup(
     deps: DepsMut,
     channel: &str,
     sender: String,
-    token_in: Amount,
     contract: String,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let lockup_key = (channel, sender.as_str());
     if LOCKUP.has(deps.storage, lockup_key) {
         return Err(ContractError::OnlyLockupByChannel {});
-    }
-
-    if !token_in.amount().is_zero() {
-        return Err(ContractError::InvalidAmountValue {});
     }
 
     let config = CONFIG.load(deps.storage)?;
@@ -520,7 +518,11 @@ fn receive_lock_tokens(
     let lockup_msg = LockupExecuteMsg::Lock {
         duration: lock.duration,
     };
-    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, &token_in);
+    let exec_msg = create_lockup_msg(
+        lockup_contract,
+        to_binary(&lockup_msg)?,
+        coins(token_in.amount().u128(), token_in.denom()),
+    );
     let submsg = SubMsg::reply_always(exec_msg, LOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
@@ -540,7 +542,6 @@ fn receive_claim_tokens(
     channel: &str,
     claim: ClaimPacket,
     sender: String,
-    token_in: Amount,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let lock_key = (channel, sender.as_str());
     let lockup_contract = LOCKUP
@@ -548,7 +549,7 @@ fn receive_claim_tokens(
         .map_err(|_| ContractError::LockupNotFound {})?;
 
     let lockup_msg = LockupExecuteMsg::Claim { denom: claim.denom };
-    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, &token_in);
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, vec![]);
     let submsg = SubMsg::reply_always(exec_msg, CLAIM_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
@@ -566,7 +567,6 @@ fn receive_unlock_tokens(
     channel: &str,
     unlock: UnlockPacket,
     sender: String,
-    token_in: Amount,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let lock_key = (channel, sender.as_str());
     let lockup_contract = LOCKUP
@@ -574,7 +574,7 @@ fn receive_unlock_tokens(
         .map_err(|_| ContractError::LockupNotFound {})?;
 
     let lockup_msg = LockupExecuteMsg::Unlock { id: unlock.id };
-    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, &token_in);
+    let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, vec![]);
     let submsg = SubMsg::reply_always(exec_msg, UNLOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
@@ -587,13 +587,21 @@ fn receive_unlock_tokens(
     Ok(res)
 }
 
-fn create_lockup_msg(contract_addr: String, msg: Binary, fund: &Amount) -> CosmosMsg {
+fn create_lockup_msg(contract_addr: String, msg: Binary, funds: Vec<Coin>) -> CosmosMsg {
     WasmMsg::Execute {
         contract_addr,
         msg,
-        funds: coins(fund.amount().u128(), fund.denom()),
+        funds,
     }
     .into()
+}
+
+fn nonpayable(amount: &Amount) -> Result<(), ContractError> {
+    if amount.is_empty() {
+        Ok(())
+    } else {
+        Err(ContractError::NonPayable {})
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
