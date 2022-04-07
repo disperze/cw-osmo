@@ -131,7 +131,7 @@ pub fn execute_lock(
 
     Ok(Response::new()
         .add_submessage(submsg)
-        .add_attribute("method", "lock")
+        .add_attribute("action", "lock")
         .add_attribute("duration", duration.to_string()))
 }
 
@@ -157,7 +157,7 @@ pub fn execute_unlock(
 
     Ok(Response::new()
         .add_submessage(submsg)
-        .add_attribute("method", "unlock")
+        .add_attribute("action", "unlock")
         .add_attribute("lock_id", lock_id.to_string()))
 }
 
@@ -188,7 +188,7 @@ pub fn execute_claim(
     Ok(Response::new()
         .set_data(to_binary(&balance)?)
         .add_message(bank_msg)
-        .add_attribute("method", "claim")
+        .add_attribute("action", "claim")
         .add_attribute("amount", balance.amount))
 }
 
