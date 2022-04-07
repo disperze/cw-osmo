@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 use cosmwasm_std::StdError;
-use cw_utils::PaymentError;
+use cw_utils::{ParseReplyError, PaymentError};
 
 /// Never is a placeholder to ensure we don't return any errors
 #[derive(Error, Debug)]
@@ -16,6 +16,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     Payment(#[from] PaymentError),
+
+    #[error("{0}")]
+    ParseReply(#[from] ParseReplyError),
 
     #[error("Channel doesn't exist: {id}")]
     NoSuchChannel { id: String },

@@ -21,7 +21,7 @@ use crate::state::{
     ReplyArgs, CHANNEL_INFO, CONFIG, LOCKUP, REPLY_ARGS,
 };
 use cw_osmo_proto::proto_ext::MessageExt;
-use cw_utils::parse_reply_instantiate_data;
+use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
@@ -140,6 +140,10 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
     match reply.result {
         ContractResult::Ok(tx) => {
             let data = tx.data.ok_or(ContractError::MissingReplyData {})?;
+            let data = parse_execute_response_data(data.as_slice())?
+                .data
+                .ok_or(ContractError::MissingReplyData {})?;
+
             let token: Coin = from_binary(&data)?;
             let reply_args = REPLY_ARGS.load(deps.storage)?;
             increase_channel_balance(
@@ -167,6 +171,9 @@ pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, Cont
     match reply.result {
         ContractResult::Ok(tx) => {
             let data = tx.data.ok_or(ContractError::MissingReplyData {})?;
+            let data = parse_execute_response_data(data.as_slice())?
+                .data
+                .ok_or(ContractError::MissingReplyData {})?;
 
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
@@ -694,8 +701,8 @@ mod test {
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{
-        coin, coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult,
-        SubMsgExecutionResponse, Timestamp, Uint128, Uint64,
+        coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult, SubMsgExecutionResponse,
+        Timestamp, Uint128, Uint64,
     };
     use serde::de::DeserializeOwned;
     use serde::Serialize;
@@ -1168,7 +1175,8 @@ mod test {
         );
 
         // Simluate unlock reply success
-        let reply_msg = mock_reply_msg(UNLOCK_TOKEN_ID, vec![], Some(Binary::from(&[1])));
+        let unlock_data = json_to_reply_proto(&format!("{{\"end_time\":{}}}", "1649351144"));
+        let reply_msg = mock_reply_msg(UNLOCK_TOKEN_ID, vec![], Some(unlock_data.into()));
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
         let ack: Ics20Ack = from_binary(&res.data.unwrap()).unwrap();
@@ -1255,8 +1263,11 @@ mod test {
         );
 
         // Simulate reply rewards.
-        let rewards_data = to_binary(&coin(rewards, denom)).unwrap();
-        let reply_msg = mock_reply_msg(CLAIM_TOKEN_ID, vec![], Some(rewards_data));
+        let rewards_data = json_to_reply_proto(&format!(
+            "{{\"amount\":\"{}\",\"denom\":\"{}\"}}",
+            rewards, denom
+        ));
+        let reply_msg = mock_reply_msg(CLAIM_TOKEN_ID, vec![], Some(rewards_data.into()));
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
 
