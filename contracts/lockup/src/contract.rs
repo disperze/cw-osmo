@@ -214,7 +214,7 @@ pub fn parse_lock_id_result(events: Vec<Event>) -> Result<u64, ContractError> {
         .parse::<u64>()
         .map_err(|_| ContractError::NoFoundLockId {})?;
 
-    return Ok(lock_id);
+    Ok(lock_id)
 }
 
 #[cfg(test)]
