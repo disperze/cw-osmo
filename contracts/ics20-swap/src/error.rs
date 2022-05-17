@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 use cosmwasm_std::StdError;
-use cw_utils::PaymentError;
+use cw_utils::{ParseReplyError, PaymentError};
 
 /// Never is a placeholder to ensure we don't return any errors
 #[derive(Error, Debug)]
@@ -16,6 +16,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     Payment(#[from] PaymentError),
+
+    #[error("{0}")]
+    ParseReply(#[from] ParseReplyError),
 
     #[error("Channel doesn't exist: {id}")]
     NoSuchChannel { id: String },
@@ -56,6 +59,9 @@ pub enum ContractError {
     #[error("Got a submessage reply with unknown id: {id}")]
     UnknownReplyId { id: u64 },
 
+    #[error("Missing reply data")]
+    MissingReplyData {},
+
     #[error("Only the governance contract can do this")]
     Unauthorized,
 
@@ -67,6 +73,15 @@ pub enum ContractError {
 
     #[error("Invalid amount value")]
     InvalidAmountValue {},
+
+    #[error("Only support one lockup account by channel")]
+    OnlyLockupByChannel {},
+
+    #[error("No found lockup account")]
+    LockupNotFound {},
+
+    #[error("This message does no accept funds")]
+    NonPayable {},
 }
 
 impl From<FromUtf8Error> for ContractError {

@@ -1,5 +1,6 @@
 pub mod proto_ext;
 pub mod query;
+pub use prost_types::Duration;
 
 /// The version (commit hash) of the Osmosis SDK used when generating this library.
 pub const OSMOSIS_VERSION: &str = include_str!("types/OSMOSIS_COMMIT");
@@ -26,5 +27,10 @@ pub mod osmosis {
             include!("types/osmosis.gamm.v1beta1.rs");
             include!("paths/osmosis.gamm.v1beta1.rs");
         }
+    }
+
+    pub mod lockup {
+        include!("types/osmosis.lockup.rs");
+        include!("paths/osmosis.lockup.rs");
     }
 }

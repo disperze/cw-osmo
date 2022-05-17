@@ -57,6 +57,10 @@ pub enum OsmoPacket {
     JoinPool(JoinPoolPacket),
     /// Exit a specific pool.
     ExitPool(ExitPoolPacket),
+    LockupAccount {},
+    Lock(LockPacket),
+    Claim(ClaimPacket),
+    Unlock(UnlockPacket),
 }
 
 /// Swap Packet
@@ -87,9 +91,34 @@ pub struct ExitPoolPacket {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct LockPacket {
+    pub duration: Uint64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ClaimPacket {
+    pub denom: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct UnlockPacket {
+    pub id: Uint64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct AmountResultAck {
     pub amount: Uint128,
     pub denom: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct LockResultAck {
+    pub lock_id: Uint64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct LockupAck {
+    pub contract: String,
 }
 
 pub fn parse_gamm_result(

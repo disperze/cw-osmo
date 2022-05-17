@@ -42,6 +42,7 @@ pub fn setup(channels: &[&str]) -> OwnedDeps<MockStorage, MockApi, MockQuerier> 
     // instantiate an empty contract
     let instantiate_msg = InitMsg {
         default_timeout: DEFAULT_TIMEOUT,
+        lockup_id: 1,
     };
     let info = mock_info(&String::from("anyone"), &[]);
     let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
@@ -51,6 +52,13 @@ pub fn setup(channels: &[&str]) -> OwnedDeps<MockStorage, MockApi, MockQuerier> 
         add_channel(deps.as_mut(), channel);
     }
     deps
+}
+
+pub fn json_to_reply_proto(json: &str) -> Vec<u8> {
+    let mut proto_data = vec![10u8, json.len() as u8];
+    proto_data.extend_from_slice(json.as_bytes());
+
+    proto_data
 }
 
 pub fn mock_swap_events() -> Vec<Event> {
