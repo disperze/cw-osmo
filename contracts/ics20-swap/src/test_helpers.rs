@@ -53,7 +53,8 @@ pub fn setup(channels: &[&str]) -> OwnedDeps<MockStorage, MockApi, MockQuerier> 
     }
     deps
 }
-?pub fn json_to_reply_proto(json: &str) -> Vec<u8> {
+
+pub fn json_to_reply_proto(json: &str) -> Vec<u8> {
     let mut proto_data = vec![10u8, json.len() as u8];
     proto_data.extend_from_slice(json.as_bytes());
 
