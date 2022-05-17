@@ -51,8 +51,11 @@ pub struct Voucher {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OsmoPacket {
+    /// Swap assets.
     Swap(SwapPacket),
+    /// Join a specific pool.
     JoinPool(JoinPoolPacket),
+    /// Exit a specific pool.
     ExitPool(ExitPoolPacket),
 }
 

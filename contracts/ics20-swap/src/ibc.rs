@@ -711,7 +711,7 @@ mod test {
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate swap reply
-        let reply_msg = mock_reply_msg(SWAP_ID, swap_events_mock());
+        let reply_msg = mock_reply_msg(SWAP_ID, mock_swap_events());
 
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
@@ -788,7 +788,7 @@ mod test {
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate join_pool reply
-        let reply_msg = mock_reply_msg(JOIN_POOL_ID, join_pool_events_mock());
+        let reply_msg = mock_reply_msg(JOIN_POOL_ID, mock_join_pool_events());
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
         let gamm_ack = get_gamm_ack(&res.data.unwrap()).unwrap();
@@ -836,7 +836,7 @@ mod test {
             share_out_min_amount: 1u8.into(),
         });
         let reply_msg = Reply {
-            id: SWAP_ID,
+            id: JOIN_POOL_ID,
             result: ContractResult::Err(error_msg.clone()),
         };
 

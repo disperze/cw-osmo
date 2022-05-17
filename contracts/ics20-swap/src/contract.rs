@@ -1,8 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, IbcQuery, MessageInfo, Order,
-    PortIdResponse, Response, StdResult,
+    to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order, Response, StdResult,
 };
 
 use cw2::set_contract_version;
@@ -11,8 +10,8 @@ use crate::amount::Amount;
 use crate::error::ContractError;
 use crate::ibc_msg::Ics20Packet;
 use crate::msg::{
-    ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, PortResponse,
-    QueryMsg, TransferMsg,
+    ChannelResponse, ConfigResponse, ExecuteMsg, InitMsg, ListChannelsResponse, QueryMsg,
+    TransferMsg,
 };
 use crate::state::{increase_channel_balance, Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
 use cw_utils::one_coin;
@@ -107,17 +106,10 @@ pub fn execute_transfer(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Port {} => to_binary(&query_port(deps)?),
         QueryMsg::ListChannels {} => to_binary(&query_list(deps)?),
         QueryMsg::Channel { id } => to_binary(&query_channel(deps, id)?),
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
     }
-}
-
-fn query_port(deps: Deps) -> StdResult<PortResponse> {
-    let query = IbcQuery::PortId {}.into();
-    let PortIdResponse { port_id } = deps.querier.query(&query)?;
-    Ok(PortResponse { port_id })
 }
 
 fn query_list(deps: Deps) -> StdResult<ListChannelsResponse> {

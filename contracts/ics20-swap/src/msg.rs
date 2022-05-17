@@ -33,8 +33,6 @@ pub struct TransferMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    /// Return the port ID bound by this contract. Returns PortResponse
-    Port {},
     /// Show all channels we have connected to. Return type is ListChannelsResponse.
     ListChannels {},
     /// Returns the details of the name channel, error if not created.
@@ -58,11 +56,6 @@ pub struct ChannelResponse {
     /// The total number of tokens that have been sent over this channel
     /// (even if many have been returned, so balance is low)
     pub total_sent: Vec<Amount>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct PortResponse {
-    pub port_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

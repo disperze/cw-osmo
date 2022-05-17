@@ -63,12 +63,10 @@ pub fn parse_pool_id(denom: &str) -> Result<u64, ContractError> {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+    use crate::test_helpers::*;
+
     use crate::ibc_msg::parse_gamm_result;
-    use crate::parse::{
-        find_attributes, find_event_type, parse_coin, EXIT_POOL_ATTR, EXIT_POOL_EVENT,
-        JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR, SWAP_EVENT,
-    };
-    use crate::test_helpers::{exit_pool_events_mock, join_pool_events_mock, swap_events_mock};
     use crate::ContractError;
     use cosmwasm_std::Uint128;
 
@@ -104,7 +102,7 @@ mod test {
 
     #[test]
     fn find_events_attributes() {
-        let events = swap_events_mock();
+        let events = mock_swap_events();
 
         let event = find_event_type(events, SWAP_EVENT);
         assert_eq!(true, event.is_some());
@@ -116,10 +114,10 @@ mod test {
     #[test]
     fn parse_swap_result() {
         let err_result =
-            parse_gamm_result(join_pool_events_mock(), SWAP_EVENT, SWAP_ATTR).unwrap_err();
+            parse_gamm_result(mock_join_pool_events(), SWAP_EVENT, SWAP_ATTR).unwrap_err();
         assert_eq!(ContractError::GammResultNotFound {}, err_result);
 
-        let events = swap_events_mock();
+        let events = mock_swap_events();
         let result = parse_gamm_result(events, SWAP_EVENT, SWAP_ATTR);
 
         assert_eq!(true, result.is_ok());
@@ -131,7 +129,7 @@ mod test {
 
     #[test]
     fn parse_join_pool_result() {
-        let events = join_pool_events_mock();
+        let events = mock_join_pool_events();
         let result = parse_gamm_result(events, JOIN_POOL_EVENT, JOIN_POOL_ATTR);
 
         assert_eq!(true, result.is_ok());
@@ -143,7 +141,7 @@ mod test {
 
     #[test]
     fn parse_exit_pool_result() {
-        let events = exit_pool_events_mock();
+        let events = mock_exit_pool_events();
         let result = parse_gamm_result(events, EXIT_POOL_EVENT, EXIT_POOL_ATTR);
 
         assert_eq!(true, result.is_ok());
