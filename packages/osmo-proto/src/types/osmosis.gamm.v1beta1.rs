@@ -1,14 +1,5 @@
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PoolAsset {
-    /// Coins we are talking about,
-    /// the denomination must be unique amongst all PoolAssets for this pool.
-    #[prost(message, optional, tag = "1")]
-    pub token: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
-    /// Weight that is not normalized. This weight must be less than 2^50
-    #[prost(string, tag = "2")]
-    pub weight: ::prost::alloc::string::String,
-}
 /// ===================== MsgJoinPool
+/// This is really MsgJoinPoolNoSwap
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgJoinPool {
     #[prost(string, tag = "1")]
@@ -56,7 +47,10 @@ pub struct MsgSwapExactAmountIn {
     pub token_out_min_amount: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgSwapExactAmountInResponse {}
+pub struct MsgSwapExactAmountInResponse {
+    #[prost(string, tag = "1")]
+    pub token_out_amount: ::prost::alloc::string::String,
+}
 /// ===================== MsgSwapExactAmountOut
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SwapAmountOutRoute {
@@ -77,8 +71,12 @@ pub struct MsgSwapExactAmountOut {
     pub token_out: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgSwapExactAmountOutResponse {}
+pub struct MsgSwapExactAmountOutResponse {
+    #[prost(string, tag = "1")]
+    pub token_in_amount: ::prost::alloc::string::String,
+}
 /// ===================== MsgJoinSwapExternAmountIn
+/// TODO: Rename to MsgJoinSwapExactAmountIn
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgJoinSwapExternAmountIn {
     #[prost(string, tag = "1")]
@@ -87,11 +85,18 @@ pub struct MsgJoinSwapExternAmountIn {
     pub pool_id: u64,
     #[prost(message, optional, tag = "3")]
     pub token_in: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
+    /// repeated cosmos.base.v1beta1.Coin tokensIn = 5 [
+    ///   (gogoproto.moretags) = "yaml:\"tokens_in\"",
+    ///   (gogoproto.nullable) = false
+    /// ];
     #[prost(string, tag = "4")]
     pub share_out_min_amount: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgJoinSwapExternAmountInResponse {}
+pub struct MsgJoinSwapExternAmountInResponse {
+    #[prost(string, tag = "1")]
+    pub share_out_amount: ::prost::alloc::string::String,
+}
 /// ===================== MsgJoinSwapShareAmountOut
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgJoinSwapShareAmountOut {
@@ -107,7 +112,10 @@ pub struct MsgJoinSwapShareAmountOut {
     pub token_in_max_amount: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgJoinSwapShareAmountOutResponse {}
+pub struct MsgJoinSwapShareAmountOutResponse {
+    #[prost(string, tag = "1")]
+    pub token_in_amount: ::prost::alloc::string::String,
+}
 /// ===================== MsgExitSwapShareAmountIn
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgExitSwapShareAmountIn {
@@ -123,7 +131,10 @@ pub struct MsgExitSwapShareAmountIn {
     pub token_out_min_amount: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgExitSwapShareAmountInResponse {}
+pub struct MsgExitSwapShareAmountInResponse {
+    #[prost(string, tag = "1")]
+    pub token_out_amount: ::prost::alloc::string::String,
+}
 /// ===================== MsgExitSwapExternAmountOut
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgExitSwapExternAmountOut {
@@ -137,7 +148,10 @@ pub struct MsgExitSwapExternAmountOut {
     pub share_in_max_amount: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MsgExitSwapExternAmountOutResponse {}
+pub struct MsgExitSwapExternAmountOutResponse {
+    #[prost(string, tag = "1")]
+    pub share_in_amount: ::prost::alloc::string::String,
+}
 ///=============================== Pool
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryPoolRequest {
@@ -185,6 +199,17 @@ pub struct QueryPoolParamsResponse {
     #[prost(message, optional, tag = "1")]
     pub params: ::core::option::Option<::prost_types::Any>,
 }
+///=============================== PoolLiquidity
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryTotalPoolLiquidityRequest {
+    #[prost(uint64, tag = "1")]
+    pub pool_id: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryTotalPoolLiquidityResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub liquidity: ::prost::alloc::vec::Vec<super::super::super::cosmos::base::v1beta1::Coin>,
+}
 ///=============================== TotalShares
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryTotalSharesRequest {
@@ -196,29 +221,19 @@ pub struct QueryTotalSharesResponse {
     #[prost(message, optional, tag = "1")]
     pub total_shares: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,
 }
-///=============================== PoolAssets
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct QueryPoolAssetsRequest {
-    #[prost(uint64, tag = "1")]
-    pub pool_id: u64,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct QueryPoolAssetsResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub pool_assets: ::prost::alloc::vec::Vec<PoolAsset>,
-}
-///=============================== SpotPrice
+/// QuerySpotPriceRequest defines the gRPC request structure for a SpotPrice
+/// query.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QuerySpotPriceRequest {
     #[prost(uint64, tag = "1")]
     pub pool_id: u64,
     #[prost(string, tag = "2")]
-    pub token_in_denom: ::prost::alloc::string::String,
+    pub base_asset_denom: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
-    pub token_out_denom: ::prost::alloc::string::String,
-    #[prost(bool, tag = "4")]
-    pub with_swap_fee: bool,
+    pub quote_asset_denom: ::prost::alloc::string::String,
 }
+/// QuerySpotPriceResponse defines the gRPC response structure for a SpotPrice
+/// query.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QuerySpotPriceResponse {
     /// String of the Dec. Ex) 10.203uatom
