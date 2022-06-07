@@ -64,11 +64,8 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         LOCKUP_ID => reply_lockup_account(deps, reply),
         LOCK_TOKEN_ID => reply_ack_from_data(deps, reply),
         CLAIM_TOKEN_ID => reply_claim_result(deps, reply),
-        UNLOCK_TOKEN_ID => reply_ack_from_data(deps, reply),
-        ACK_FAILURE_ID => match reply.result {
-            ContractResult::Ok(_) => Ok(Response::new()),
-            ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
-        },
+        UNLOCK_TOKEN_ID => reply_receive(deps, reply),
+        ACK_FAILURE_ID => reply_ack_on_error(reply),
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
     }
 }
@@ -181,6 +178,13 @@ pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, Cont
             restore_balance_reply(deps.storage)?;
             Ok(Response::new().set_data(ack_fail(err)))
         }
+    }
+}
+
+pub fn reply_ack_on_error(reply: Reply) -> Result<Response, ContractError> {
+    match reply.result {
+        ContractResult::Ok(_) => Ok(Response::new()),
+        ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
     }
 }
 
@@ -582,7 +586,7 @@ fn receive_unlock_tokens(
 
     let lockup_msg = LockupExecuteMsg::Unlock { id: unlock.id };
     let exec_msg = create_lockup_msg(lockup_contract, to_binary(&lockup_msg)?, vec![]);
-    let submsg = SubMsg::reply_always(exec_msg, UNLOCK_TOKEN_ID);
+    let submsg = SubMsg::reply_on_error(exec_msg, UNLOCK_TOKEN_ID);
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -1168,19 +1172,11 @@ mod test {
         assert_submsg_wasm(
             res.messages[0].clone(),
             UNLOCK_TOKEN_ID,
-            ReplyOn::Always,
+            ReplyOn::Error,
             &lockup_contract,
             lockup_msg,
             vec![],
         );
-
-        // Simluate unlock reply success
-        let unlock_data = json_to_reply_proto(&format!("{{\"end_time\":{}}}", "1649351144"));
-        let reply_msg = mock_reply_msg(UNLOCK_TOKEN_ID, vec![], Some(unlock_data.into()));
-        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
-        assert_eq!(0, res.messages.len());
-        let ack: Ics20Ack = from_binary(&res.data.unwrap()).unwrap();
-        assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simluate unlock reply error
         let reply_msg = Reply {
