@@ -64,7 +64,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         LOCKUP_ID => reply_lockup_account(deps, reply),
         LOCK_TOKEN_ID => reply_ack_from_data(deps, reply),
         CLAIM_TOKEN_ID => reply_claim_result(deps, reply),
-        UNLOCK_TOKEN_ID => reply_receive(deps, reply),
+        UNLOCK_TOKEN_ID => reply_ack_on_error(reply),
         ACK_FAILURE_ID => reply_ack_on_error(reply),
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
     }
