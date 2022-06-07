@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps, DepsMut, Env, Event,
-    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Timestamp, Uint64,
+    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint64,
 };
 use cw2::set_contract_version;
 use cw_osmo_proto::osmosis::lockup;
