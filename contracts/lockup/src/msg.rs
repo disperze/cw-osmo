@@ -33,7 +33,3 @@ pub struct LockResult {
     pub lock_id: Uint64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct UnlockResult {
-    pub end_time: Timestamp,
-}
