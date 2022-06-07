@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps, DepsMut, Env, Event,
-    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint64,
+    to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Reply, Response, StdError, StdResult, SubMsg, Uint64,
 };
 use cw2::set_contract_version;
 use cw_osmo_proto::osmosis::lockup;
@@ -179,7 +179,7 @@ mod test {
         mock_dependencies_with_balance, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
     use cosmwasm_std::{
-        attr, coins, from_binary, Binary, Empty, OwnedDeps, SubMsgExecutionResponse,
+        attr, coins, from_binary, Binary, Empty, Event, OwnedDeps, SubMsgExecutionResponse,
     };
     use cw_controllers::{AdminError, AdminResponse};
     use cw_utils::PaymentError::NonPayable;
