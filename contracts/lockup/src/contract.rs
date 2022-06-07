@@ -171,24 +171,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-const LOCKUP_EVENT: &str = "begin_unlock";
-const LOCKUP_ATTR_ID: &str = "period_lock_id";
-
-pub fn parse_lock_id_result(events: Vec<Event>) -> Result<u64, ContractError> {
-    let value = events
-        .into_iter()
-        .find(|e| e.ty == LOCKUP_EVENT)
-        .and_then(|ev| ev.attributes.into_iter().find(|a| a.key == LOCKUP_ATTR_ID))
-        .map(|a| a.value)
-        .ok_or(ContractError::NoFoundLockId {})?;
-
-    let lock_id = value
-        .parse::<u64>()
-        .map_err(|_| ContractError::NoFoundLockId {})?;
-
-    Ok(lock_id)
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -323,15 +305,6 @@ mod test {
         let sender = mock_info("owner", &[]);
         let res = execute(deps.as_mut(), mock_env(), sender, msg).unwrap();
         assert_eq!(1, res.messages.len());
-    }
-
-    #[test]
-    fn parse_lock_result() {
-        let err = parse_lock_id_result(vec![]).unwrap_err();
-        assert_eq!(err, ContractError::NoFoundLockId {});
-
-        let res = parse_lock_id_result(mock_lock_events()).unwrap();
-        assert_eq!(16u64, res);
     }
 
     #[test]
