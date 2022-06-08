@@ -1,3 +1,6 @@
+/// PeriodLock is a single unit of lock by period. It's a record of locked coin
+/// at a specific time. It stores owner, duration, unlock time and the amount of
+/// coins locked.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PeriodLock {
     #[prost(uint64, tag = "1")]
@@ -27,6 +30,7 @@ pub struct QueryCondition {
     pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
 }
 /// SyntheticLock is a single unit of synthetic lockup
+/// TODO: Change this to have
 /// * underlying_lock_id
 /// * synthetic_coin
 /// * end_time
@@ -200,6 +204,18 @@ pub struct AccountLockedLongerDurationResponse {
     pub locks: ::prost::alloc::vec::Vec<PeriodLock>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AccountLockedDurationRequest {
+    #[prost(string, tag = "1")]
+    pub owner: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub duration: ::core::option::Option<::prost_types::Duration>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AccountLockedDurationResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub locks: ::prost::alloc::vec::Vec<PeriodLock>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AccountLockedLongerDurationNotUnlockingOnlyRequest {
     #[prost(string, tag = "1")]
     pub owner: ::prost::alloc::string::String,
@@ -261,6 +277,24 @@ pub struct MsgBeginUnlocking {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MsgBeginUnlockingResponse {
+    #[prost(bool, tag = "1")]
+    pub success: bool,
+}
+/// MsgExtendLockup extends the existing lockup's duration.
+/// The new duration is longer than the original.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgExtendLockup {
+    #[prost(string, tag = "1")]
+    pub owner: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub id: u64,
+    /// duration to be set. fails if lower than the current duration, or is
+    /// unlocking
+    #[prost(message, optional, tag = "3")]
+    pub duration: ::core::option::Option<::prost_types::Duration>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgExtendLockupResponse {
     #[prost(bool, tag = "1")]
     pub success: bool,
 }

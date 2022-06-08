@@ -1,8 +1,8 @@
 use cosmwasm_std::{
-    attr, coins, entry_point, from_binary, to_binary, BankMsg, Binary, Coin, ContractResult,
-    CosmosMsg, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, SubMsg, WasmMsg,
+    attr, coins, entry_point, from_binary, to_binary, BankMsg, Binary, Coin, CosmosMsg, DepsMut,
+    Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
+    IbcReceiveResponse, Reply, Response, SubMsg, SubMsgResult, WasmMsg,
 };
 
 use crate::amount::Amount;
@@ -77,7 +77,7 @@ pub fn reply_gamm_result(
     attribute: &str,
 ) -> Result<Response, ContractError> {
     match reply.result {
-        ContractResult::Ok(tx) => {
+        SubMsgResult::Ok(tx) => {
             let gamm_res = parse_gamm_result(tx.events, event, attribute);
             match gamm_res {
                 Ok(ack) => {
@@ -98,7 +98,7 @@ pub fn reply_gamm_result(
                 }
             }
         }
-        ContractResult::Err(err) => {
+        SubMsgResult::Err(err) => {
             restore_balance_reply(deps.storage)?;
             Ok(Response::new().set_data(ack_fail(err)))
         }
@@ -107,7 +107,7 @@ pub fn reply_gamm_result(
 
 pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result.clone() {
-        ContractResult::Ok(_) => {
+        SubMsgResult::Ok(_) => {
             let res = parse_reply_instantiate_data(reply);
 
             match res {
@@ -129,13 +129,13 @@ pub fn reply_lockup_account(deps: DepsMut, reply: Reply) -> Result<Response, Con
                 Err(err) => Ok(Response::new().set_data(ack_fail(err.to_string()))),
             }
         }
-        ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+        SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
     }
 }
 
 pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
-        ContractResult::Ok(tx) => {
+        SubMsgResult::Ok(tx) => {
             let data = tx.data.ok_or(ContractError::MissingReplyData {})?;
             let data = parse_execute_response_data(data.as_slice())?
                 .data
@@ -157,7 +157,7 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
             let data = to_binary(&ack).unwrap();
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
-        ContractResult::Err(err) => {
+        SubMsgResult::Err(err) => {
             restore_balance_reply(deps.storage)?;
             Ok(Response::new().set_data(ack_fail(err)))
         }
@@ -166,7 +166,7 @@ pub fn reply_claim_result(deps: DepsMut, reply: Reply) -> Result<Response, Contr
 
 pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
-        ContractResult::Ok(tx) => {
+        SubMsgResult::Ok(tx) => {
             let data = tx.data.ok_or(ContractError::MissingReplyData {})?;
             let data = parse_execute_response_data(data.as_slice())?
                 .data
@@ -174,7 +174,7 @@ pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, Cont
 
             Ok(Response::new().set_data(ack_success_with_body(data)))
         }
-        ContractResult::Err(err) => {
+        SubMsgResult::Err(err) => {
             restore_balance_reply(deps.storage)?;
             Ok(Response::new().set_data(ack_fail(err)))
         }
@@ -183,15 +183,15 @@ pub fn reply_ack_from_data(deps: DepsMut, reply: Reply) -> Result<Response, Cont
 
 pub fn reply_ack_on_error(reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
-        ContractResult::Ok(_) => Ok(Response::new()),
-        ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+        SubMsgResult::Ok(_) => Ok(Response::new()),
+        SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
     }
 }
 
 pub fn reply_receive(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
-        ContractResult::Ok(_) => Ok(Response::new()),
-        ContractResult::Err(err) => {
+        SubMsgResult::Ok(_) => Ok(Response::new()),
+        SubMsgResult::Err(err) => {
             restore_balance_reply(deps.storage)?;
             Ok(Response::new().set_data(ack_fail(err)))
         }
@@ -705,8 +705,8 @@ mod test {
     use crate::msg::{ExecuteMsg, TransferMsg};
     use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{
-        coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult, SubMsgExecutionResponse,
-        Timestamp, Uint128, Uint64,
+        coins, to_vec, Event, IbcEndpoint, ReplyOn, StdError, StdResult, SubMsgResponse, Timestamp,
+        Uint128, Uint64,
     };
     use serde::de::DeserializeOwned;
     use serde::Serialize;
@@ -803,7 +803,7 @@ mod test {
     fn mock_reply_msg(id: u64, events: Vec<Event>, data: Option<Binary>) -> Reply {
         Reply {
             id,
-            result: ContractResult::Ok(SubMsgExecutionResponse { events, data }),
+            result: SubMsgResult::Ok(SubMsgResponse { events, data }),
         }
     }
 
@@ -1181,7 +1181,7 @@ mod test {
         // Simluate unlock reply error
         let reply_msg = Reply {
             id: UNLOCK_TOKEN_ID,
-            result: ContractResult::Err("No found lockup id".to_string()),
+            result: SubMsgResult::Err("No found lockup id".to_string()),
         };
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
@@ -1290,7 +1290,7 @@ mod test {
         });
         let reply_msg = Reply {
             id: JOIN_POOL_ID,
-            result: ContractResult::Err(error_msg.clone()),
+            result: SubMsgResult::Err(error_msg.clone()),
         };
 
         // Transfer initial tokens

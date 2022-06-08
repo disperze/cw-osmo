@@ -2,10 +2,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, CosmosMsg, Deps,
-    DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
-    IbcChannelOpenMsg, IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, Storage, SubMsg, Uint128, WasmMsg,
+    attr, entry_point, from_binary, to_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env,
+    IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
+    IbcReceiveResponse, Reply, Response, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg,
 };
 
 use crate::amount::{get_cw20_denom, Amount};
@@ -88,8 +88,8 @@ const ACK_FAILURE_ID: u64 = 0xfa17;
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
         RECEIVE_ID => match reply.result {
-            ContractResult::Ok(_) => Ok(Response::new()),
-            ContractResult::Err(err) => {
+            SubMsgResult::Ok(_) => Ok(Response::new()),
+            SubMsgResult::Err(err) => {
                 let reply_args = REPLY_ARGS.load(deps.storage)?;
 
                 if reply_args.our_chain {
@@ -105,8 +105,8 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
             }
         },
         ACK_FAILURE_ID => match reply.result {
-            ContractResult::Ok(_) => Ok(Response::new()),
-            ContractResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+            SubMsgResult::Ok(_) => Ok(Response::new()),
+            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
         },
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
     }

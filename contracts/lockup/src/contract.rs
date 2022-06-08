@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, SubMsg, Uint64,
+    to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, Response,
+    StdError, StdResult, SubMsg, SubMsgResult, Uint64,
 };
 use cw2::set_contract_version;
 use cw_osmo_proto::osmosis::lockup;
@@ -29,7 +29,7 @@ pub fn reply(_deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contra
 
 pub fn reply_lock(reply: Reply) -> Result<Response, ContractError> {
     match reply.result {
-        ContractResult::Ok(tx) => {
+        SubMsgResult::Ok(tx) => {
             let data = tx.data.ok_or(ContractError::NoReplyData {})?;
 
             let response: lockup::MsgLockTokensResponse = proto_decode(data.as_slice())?;
@@ -39,7 +39,7 @@ pub fn reply_lock(reply: Reply) -> Result<Response, ContractError> {
 
             Ok(Response::new().set_data(to_binary(&result)?))
         }
-        ContractResult::Err(err) => Err(StdError::generic_err(err).into()),
+        SubMsgResult::Err(err) => Err(StdError::generic_err(err).into()),
     }
 }
 
@@ -178,9 +178,7 @@ mod test {
     use cosmwasm_std::testing::{
         mock_dependencies_with_balance, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
-    use cosmwasm_std::{
-        attr, coins, from_binary, Binary, Empty, Event, OwnedDeps, SubMsgExecutionResponse,
-    };
+    use cosmwasm_std::{attr, coins, from_binary, Binary, Empty, Event, OwnedDeps, SubMsgResponse};
     use cw_controllers::{AdminError, AdminResponse};
     use cw_utils::PaymentError::NonPayable;
 
@@ -232,7 +230,7 @@ mod test {
         let data = Binary::from_base64("CAE=").unwrap(); // id: 1
         let reply_msg = Reply {
             id: LOCK_TOKEN_ID,
-            result: ContractResult::Ok(SubMsgExecutionResponse {
+            result: SubMsgResult::Ok(SubMsgResponse {
                 events: mock_lock_events(),
                 data: Some(data),
             }),
