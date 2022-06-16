@@ -4,13 +4,14 @@ use cosmwasm_std::{
     IbcChannelOpenMsg, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
     IbcReceiveResponse, StdError, StdResult,
 };
+use osmo_bindings::OsmosisQuery;
 
 use crate::relay::{ack_fail, enforce_order_and_version, on_recv_packet};
 use crate::state::{ChannelData, CHANNELS_INFO};
 
 #[entry_point]
 pub fn ibc_channel_open(
-    _deps: DepsMut,
+    _deps: DepsMut<OsmosisQuery>,
     _env: Env,
     msg: IbcChannelOpenMsg,
 ) -> Result<(), ContractError> {
@@ -21,7 +22,7 @@ pub fn ibc_channel_open(
 
 #[entry_point]
 pub fn ibc_channel_connect(
-    deps: DepsMut,
+    deps: DepsMut<OsmosisQuery>,
     env: Env,
     msg: IbcChannelConnectMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
@@ -41,7 +42,7 @@ pub fn ibc_channel_connect(
 
 #[entry_point]
 pub fn ibc_channel_close(
-    deps: DepsMut,
+    deps: DepsMut<OsmosisQuery>,
     _env: Env,
     msg: IbcChannelCloseMsg,
 ) -> StdResult<IbcBasicResponse> {
@@ -58,7 +59,7 @@ pub fn ibc_channel_close(
 
 #[entry_point]
 pub fn ibc_packet_receive(
-    deps: DepsMut,
+    deps: DepsMut<OsmosisQuery>,
     _env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> StdResult<IbcReceiveResponse> {
@@ -74,7 +75,7 @@ pub fn ibc_packet_receive(
 
 #[entry_point]
 pub fn ibc_packet_ack(
-    _deps: DepsMut,
+    _deps: DepsMut<OsmosisQuery>,
     _env: Env,
     _msg: IbcPacketAckMsg,
 ) -> StdResult<IbcBasicResponse> {
@@ -83,7 +84,7 @@ pub fn ibc_packet_ack(
 
 #[entry_point]
 pub fn ibc_packet_timeout(
-    _deps: DepsMut,
+    _deps: DepsMut<OsmosisQuery>,
     _env: Env,
     _msg: IbcPacketTimeoutMsg,
 ) -> StdResult<IbcBasicResponse> {
@@ -96,18 +97,21 @@ mod tests {
     use crate::contract::{instantiate, query};
     use crate::msg::{ChannelResponse, InstantiateMsg, QueryMsg};
 
-    use crate::ibc_msg::PacketMsg;
+    use crate::ibc_msg::{GammMsg, PacketMsg, SpotPriceMsg};
     use crate::relay::QUERY_VERSION;
+    use crate::test_helpers::mock_dependencies;
     use cosmwasm_std::testing::{
-        mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
+        mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
         mock_ibc_channel_open_try, mock_ibc_packet_ack, mock_ibc_packet_recv,
-        mock_ibc_packet_timeout, mock_info, MockApi, MockQuerier, MockStorage,
+        mock_ibc_packet_timeout, mock_info, MockApi, MockStorage,
     };
-    use cosmwasm_std::{from_slice, Binary, IbcAcknowledgement, IbcOrder, OwnedDeps};
+    use cosmwasm_std::{from_slice, IbcAcknowledgement, IbcOrder, OwnedDeps};
+    use osmo_bindings_test::OsmosisApp;
 
     const CREATOR: &str = "creator";
 
-    fn setup() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
+
+    fn setup() -> OwnedDeps<MockStorage, MockApi, OsmosisApp, OsmosisQuery> {
         let mut deps = mock_dependencies();
         let msg = InstantiateMsg {};
         let info = mock_info(CREATOR, &[]);
@@ -118,7 +122,7 @@ mod tests {
 
     // connect will run through the entire handshake to set up a proper connect and
     // save the account (tested in detail in `proper_handshake_flow`)
-    fn connect(mut deps: DepsMut, channel_id: &str) {
+    fn connect(mut deps: DepsMut<OsmosisQuery>, channel_id: &str) {
         let handshake_open =
             mock_ibc_channel_open_init(channel_id, IbcOrder::Unordered, QUERY_VERSION);
         // first we try to open with a valid handshake
@@ -193,8 +197,11 @@ mod tests {
 
         let packet = PacketMsg {
             client_id: None,
-            path: "/osmosis.gamm.v1beta1.Query/SpotPrice".to_string(),
-            data: Binary::from(&[1]),
+            query: GammMsg::SpotPrice(SpotPriceMsg{
+                pool: 1u8.into(),
+                token_in: "uosmo".into(),
+                token_out: "uatom".into(),
+            })
         };
         let rcv_msg = mock_ibc_packet_recv(channel_id, &packet).unwrap();
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), rcv_msg).unwrap();
