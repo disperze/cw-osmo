@@ -1,7 +1,7 @@
 pub mod proto_ext;
 pub mod query;
-pub use prost_types::Duration;
 pub use prost::Message;
+pub use prost_types::Duration;
 
 /// The version (commit hash) of the Osmosis SDK used when generating this library.
 pub const OSMOSIS_VERSION: &str = include_str!("types/OSMOSIS_COMMIT");
