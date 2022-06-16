@@ -1,12 +1,40 @@
+use crate::ibc_msg::AmountResultAck;
 use crate::ContractError;
-use cosmwasm_std::{Attribute, Coin, Event};
+use cosmwasm_std::{Attribute, Coin, Event, SubMsgResponse, Uint128};
+use cw_osmo_proto::osmosis::gamm::v1beta1::{
+    MsgExitSwapShareAmountInResponse, MsgJoinSwapExternAmountInResponse,
+    MsgSwapExactAmountInResponse,
+};
+use cw_osmo_proto::proto_ext::proto_decode;
 
 pub const SWAP_EVENT: &str = "token_swapped";
 pub const SWAP_ATTR: &str = "tokens_out";
 pub const JOIN_POOL_EVENT: &str = "coinbase";
 pub const JOIN_POOL_ATTR: &str = "amount";
-pub const EXIT_POOL_EVENT: &str = "pool_exited";
+pub const EXIT_POOL_EVENT: &str = "token_swapped";
 pub const EXIT_POOL_ATTR: &str = "tokens_out";
+
+pub trait GammResult {
+    fn amount(&self) -> &String;
+}
+
+impl GammResult for MsgSwapExactAmountInResponse {
+    fn amount(&self) -> &String {
+        &self.token_out_amount
+    }
+}
+
+impl GammResult for MsgJoinSwapExternAmountInResponse {
+    fn amount(&self) -> &String {
+        &self.share_out_amount
+    }
+}
+
+impl GammResult for MsgExitSwapShareAmountInResponse {
+    fn amount(&self) -> &String {
+        &self.token_out_amount
+    }
+}
 
 pub fn find_event_type(events: Vec<Event>, key: &str) -> Option<Event> {
     for ev in events {
@@ -61,14 +89,46 @@ pub fn parse_pool_id(denom: &str) -> Result<u64, ContractError> {
     Ok(pool_id)
 }
 
+pub fn parse_gamm_result<M: GammResult + cw_osmo_proto::Message + std::default::Default>(
+    msg: SubMsgResponse,
+    event: &str,
+    attribute: &str,
+) -> Result<AmountResultAck, ContractError> {
+    let event = find_event_type(msg.events, event);
+    if event.is_none() {
+        return Err(ContractError::GammResultNotFound {});
+    }
+
+    let values = find_attributes(event.unwrap().attributes, attribute);
+    if values.is_empty() {
+        return Err(ContractError::GammResultNotFound {});
+    }
+
+    let token_out_str = values.last().unwrap();
+    let token_out = parse_coin(token_out_str.as_str())?;
+
+    let data = msg.data.ok_or(ContractError::NoReplyData {})?;
+    let response: M = proto_decode(data.as_slice())?;
+    let amount = response
+        .amount()
+        .parse::<u128>()
+        .map_err(|_| ContractError::InvalidAmountValue {})?;
+
+    let ack = AmountResultAck {
+        amount: Uint128::from(amount),
+        denom: token_out.denom,
+    };
+
+    Ok(ack)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::test_helpers::*;
 
-    use crate::ibc_msg::parse_gamm_result;
     use crate::ContractError;
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::{Binary, SubMsgResponse, Uint128};
 
     #[test]
     fn parse_token_str() {
@@ -113,12 +173,21 @@ mod test {
 
     #[test]
     fn parse_swap_result() {
+        let msg = SubMsgResponse {
+            events: mock_join_pool_events(),
+            data: None,
+        };
         let err_result =
-            parse_gamm_result(mock_join_pool_events(), SWAP_EVENT, SWAP_ATTR).unwrap_err();
+            parse_gamm_result::<MsgSwapExactAmountInResponse>(msg, SWAP_EVENT, SWAP_ATTR)
+                .unwrap_err();
         assert_eq!(ContractError::GammResultNotFound {}, err_result);
 
         let events = mock_swap_events();
-        let result = parse_gamm_result(events, SWAP_EVENT, SWAP_ATTR);
+        let msg = SubMsgResponse {
+            events,
+            data: Some(Binary::from_base64("CggzNjYwMTA3MA==").unwrap()),
+        };
+        let result = parse_gamm_result::<MsgSwapExactAmountInResponse>(msg, SWAP_EVENT, SWAP_ATTR);
 
         assert_eq!(true, result.is_ok());
         let token = result.unwrap();
@@ -130,7 +199,15 @@ mod test {
     #[test]
     fn parse_join_pool_result() {
         let events = mock_join_pool_events();
-        let result = parse_gamm_result(events, JOIN_POOL_EVENT, JOIN_POOL_ATTR);
+        let msg = SubMsgResponse {
+            events,
+            data: Some(Binary::from_base64("ChQ3NDE5Njk5MzA5NzMxODExOTE0Nw==").unwrap()),
+        };
+        let result = parse_gamm_result::<MsgJoinSwapExternAmountInResponse>(
+            msg,
+            JOIN_POOL_EVENT,
+            JOIN_POOL_ATTR,
+        );
 
         assert_eq!(true, result.is_ok());
         let token = result.unwrap();
@@ -142,7 +219,15 @@ mod test {
     #[test]
     fn parse_exit_pool_result() {
         let events = mock_exit_pool_events();
-        let result = parse_gamm_result(events, EXIT_POOL_EVENT, EXIT_POOL_ATTR);
+        let msg = SubMsgResponse {
+            events,
+            data: Some(Binary::from_base64("Cgc5OTcwMDIy").unwrap()),
+        };
+        let result = parse_gamm_result::<MsgExitSwapShareAmountInResponse>(
+            msg,
+            EXIT_POOL_EVENT,
+            EXIT_POOL_ATTR,
+        );
 
         assert_eq!(true, result.is_ok());
         let token = result.unwrap();

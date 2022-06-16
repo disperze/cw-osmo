@@ -26,6 +26,9 @@ pub enum ContractError {
     #[error("Didn't send any funds")]
     NoFunds {},
 
+    #[error("Missing reply data")]
+    NoReplyData {},
+
     #[error("Amount larger than 2**64, not supported by ics20 packets")]
     AmountOverflow {},
 

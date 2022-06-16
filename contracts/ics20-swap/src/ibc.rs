@@ -8,17 +8,22 @@ use cosmwasm_std::{
 use crate::amount::Amount;
 use crate::error::{ContractError, Never};
 use crate::ibc_msg::{
-    parse_gamm_result, AmountResultAck, ClaimPacket, ExitPoolPacket, Ics20Ack, Ics20Packet,
-    JoinPoolPacket, LockPacket, LockupAck, OsmoPacket, SwapPacket, UnlockPacket, Voucher,
+    AmountResultAck, ClaimPacket, ExitPoolPacket, Ics20Ack, Ics20Packet, JoinPoolPacket,
+    LockPacket, LockupAck, OsmoPacket, SwapPacket, UnlockPacket, Voucher,
 };
 use crate::msg::{LockupExecuteMsg, LockupInitMsg};
 use crate::parse::{
-    parse_pool_id, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR, JOIN_POOL_EVENT, SWAP_ATTR,
-    SWAP_EVENT,
+    parse_gamm_result, parse_pool_id, GammResult, EXIT_POOL_ATTR, EXIT_POOL_EVENT, JOIN_POOL_ATTR,
+    JOIN_POOL_EVENT, SWAP_ATTR, SWAP_EVENT,
 };
 use crate::state::{
     increase_channel_balance, reduce_channel_balance, restore_balance_reply, ChannelInfo,
     ReplyArgs, CHANNEL_INFO, CONFIG, LOCKUP, REPLY_ARGS,
+};
+use cw_osmo_proto::osmosis::gamm::v1beta1::{
+    MsgExitSwapShareAmountInResponse as ExitResponse,
+    MsgJoinSwapExternAmountInResponse as JoinResponse,
+    MsgSwapExactAmountInResponse as SwapResponse,
 };
 use cw_osmo_proto::proto_ext::MessageExt;
 use cw_utils::{parse_execute_response_data, parse_reply_instantiate_data};
@@ -58,9 +63,13 @@ const UNLOCK_TOKEN_ID: u64 = 0x6f11;
 pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
         RECEIVE_ID => reply_receive(deps, reply),
-        SWAP_ID => reply_gamm_result(deps, reply, SWAP_EVENT, SWAP_ATTR),
-        JOIN_POOL_ID => reply_gamm_result(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR),
-        EXIT_POOL_ID => reply_gamm_result(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR),
+        SWAP_ID => reply_gamm_result::<SwapResponse>(deps, reply, SWAP_EVENT, SWAP_ATTR),
+        JOIN_POOL_ID => {
+            reply_gamm_result::<JoinResponse>(deps, reply, JOIN_POOL_EVENT, JOIN_POOL_ATTR)
+        }
+        EXIT_POOL_ID => {
+            reply_gamm_result::<ExitResponse>(deps, reply, EXIT_POOL_EVENT, EXIT_POOL_ATTR)
+        }
         LOCKUP_ID => reply_lockup_account(deps, reply),
         LOCK_TOKEN_ID => reply_ack_from_data(deps, reply),
         CLAIM_TOKEN_ID => reply_claim_result(deps, reply),
@@ -70,7 +79,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
     }
 }
 
-pub fn reply_gamm_result(
+pub fn reply_gamm_result<M: GammResult + cw_osmo_proto::Message + std::default::Default>(
     deps: DepsMut,
     reply: Reply,
     event: &str,
@@ -78,7 +87,7 @@ pub fn reply_gamm_result(
 ) -> Result<Response, ContractError> {
     match reply.result {
         SubMsgResult::Ok(tx) => {
-            let gamm_res = parse_gamm_result(tx.events, event, attribute);
+            let gamm_res = parse_gamm_result::<M>(tx, event, attribute);
             match gamm_res {
                 Ok(ack) => {
                     let reply_args = REPLY_ARGS.load(deps.storage)?;
@@ -981,7 +990,8 @@ mod test {
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate swap reply
-        let reply_msg = mock_reply_msg(SWAP_ID, mock_swap_events(), None);
+        let r = mock_swap_response();
+        let reply_msg = mock_reply_msg(SWAP_ID, r.events, r.data);
 
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
@@ -1058,7 +1068,8 @@ mod test {
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
         // Simulate join_pool reply
-        let reply_msg = mock_reply_msg(JOIN_POOL_ID, mock_join_pool_events(), None);
+        let r = mock_join_pool_response();
+        let reply_msg = mock_reply_msg(JOIN_POOL_ID, r.events, r.data);
         let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
         assert_eq!(0, res.messages.len());
         let gamm_ack: AmountResultAck = get_ack_result(&res.data.unwrap()).unwrap();
@@ -1076,20 +1087,32 @@ mod test {
         let ack: Ics20Ack = from_binary(&res.acknowledgement).unwrap();
         assert!(matches!(ack, Ics20Ack::Result(_)));
 
+        // Simulate exit_pool reply
+        let r = mock_exit_pool_response();
+        let reply_msg = mock_reply_msg(EXIT_POOL_ID, r.events, r.data);
+        let res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        let gamm_ack: AmountResultAck = get_ack_result(&res.data.unwrap()).unwrap();
+        let gamm_ack_exp = AmountResultAck {
+            amount: Uint128::new(9970022),
+            denom: denom.to_string(),
+        };
+        assert_eq!(gamm_ack, gamm_ack_exp);
+
         // query channel state
         let state = query_channel(deps.as_ref(), send_channel.to_string()).unwrap();
         assert_eq!(
             state.balances,
             vec![
                 Amount::native(1000000000000, pool_denom),
-                Amount::native(111111111, denom)
+                Amount::native(121081133, denom)
             ]
         );
         assert_eq!(
             state.total_sent,
             vec![
                 Amount::native(74196993097318119147, pool_denom),
-                Amount::native(987654321, denom)
+                Amount::native(997624343, denom)
             ]
         );
     }
