@@ -110,7 +110,6 @@ mod tests {
 
     const CREATOR: &str = "creator";
 
-
     fn setup() -> OwnedDeps<MockStorage, MockApi, OsmosisApp, OsmosisQuery> {
         let mut deps = mock_dependencies();
         let msg = InstantiateMsg {};
@@ -197,11 +196,11 @@ mod tests {
 
         let packet = PacketMsg {
             client_id: None,
-            query: GammMsg::SpotPrice(SpotPriceMsg{
+            query: GammMsg::SpotPrice(SpotPriceMsg {
                 pool: 1u8.into(),
                 token_in: "uosmo".into(),
                 token_out: "uatom".into(),
-            })
+            }),
         };
         let rcv_msg = mock_ibc_packet_recv(channel_id, &packet).unwrap();
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), rcv_msg).unwrap();

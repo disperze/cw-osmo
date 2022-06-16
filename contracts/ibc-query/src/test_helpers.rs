@@ -1,10 +1,10 @@
 #![cfg(test)]
 
-use std::marker::PhantomData;
-use cosmwasm_std::{OwnedDeps, Querier};
 use cosmwasm_std::testing::{MockApi, MockStorage};
+use cosmwasm_std::{OwnedDeps, Querier};
 use osmo_bindings::OsmosisQuery;
 use osmo_bindings_test::OsmosisApp;
+use std::marker::PhantomData;
 
 fn mock_dependencies_with_custom_quierier<Q: Querier>(
     querier: Q,
@@ -21,4 +21,3 @@ pub fn mock_dependencies() -> OwnedDeps<MockStorage, MockApi, OsmosisApp, Osmosi
     let custom_querier = OsmosisApp::new();
     mock_dependencies_with_custom_quierier(custom_querier)
 }
-

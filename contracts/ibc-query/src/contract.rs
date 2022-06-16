@@ -46,8 +46,8 @@ fn query_list_channels(deps: Deps<OsmosisQuery>) -> StdResult<ListChannelsRespon
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_env, mock_info};
     use crate::test_helpers::mock_dependencies;
+    use cosmwasm_std::testing::{mock_env, mock_info};
 
     const CREATOR: &str = "creator";
 
