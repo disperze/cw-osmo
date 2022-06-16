@@ -1,6 +1,4 @@
-use crate::parse::{find_attributes, find_event_type, parse_coin};
-use crate::ContractError;
-use cosmwasm_std::{Binary, Event, Uint128, Uint64};
+use cosmwasm_std::{Binary, Uint128, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -119,30 +117,4 @@ pub struct LockResultAck {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct LockupAck {
     pub contract: String,
-}
-
-pub fn parse_gamm_result(
-    events: Vec<Event>,
-    event: &str,
-    attribute: &str,
-) -> Result<AmountResultAck, ContractError> {
-    let event = find_event_type(events, event);
-    if event.is_none() {
-        return Err(ContractError::GammResultNotFound {});
-    }
-
-    let values = find_attributes(event.unwrap().attributes, attribute);
-    if values.is_empty() {
-        return Err(ContractError::GammResultNotFound {});
-    }
-
-    let token_out_str = values.last().unwrap();
-    let token_out = parse_coin(token_out_str.as_str())?;
-
-    let ack = AmountResultAck {
-        amount: token_out.amount,
-        denom: token_out.denom,
-    };
-
-    Ok(ack)
 }

@@ -8,7 +8,7 @@ use cosmwasm_std::testing::{
     mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
     mock_info, MockApi, MockQuerier, MockStorage,
 };
-use cosmwasm_std::{attr, DepsMut, Event, IbcEndpoint, OwnedDeps};
+use cosmwasm_std::{attr, Binary, DepsMut, Event, IbcEndpoint, OwnedDeps, SubMsgResponse};
 
 use crate::msg::InitMsg;
 
@@ -61,6 +61,13 @@ pub fn json_to_reply_proto(json: &str) -> Vec<u8> {
     proto_data
 }
 
+pub fn mock_swap_response() -> SubMsgResponse {
+    SubMsgResponse {
+        events: mock_swap_events(),
+        data: Some(Binary::from_base64("CggzNjYwMTA3MA==").unwrap()),
+    }
+}
+
 pub fn mock_swap_events() -> Vec<Event> {
     return vec![
         Event::new("token_swapped").add_attributes(vec![
@@ -104,6 +111,13 @@ pub fn mock_swap_events() -> Vec<Event> {
     ];
 }
 
+pub fn mock_join_pool_response() -> SubMsgResponse {
+    SubMsgResponse {
+        events: mock_join_pool_events(),
+        data: Some(Binary::from_base64("ChQ3NDE5Njk5MzA5NzMxODExOTE0Nw==").unwrap()),
+    }
+}
+
 pub fn mock_join_pool_events() -> Vec<Event> {
     return vec![
         Event::new("pool_joined").add_attributes(vec![
@@ -119,13 +133,27 @@ pub fn mock_join_pool_events() -> Vec<Event> {
     ];
 }
 
+pub fn mock_exit_pool_response() -> SubMsgResponse {
+    SubMsgResponse {
+        events: mock_exit_pool_events(),
+        data: Some(Binary::from_base64("Cgc5OTcwMDIy").unwrap()),
+    }
+}
+
 pub fn mock_exit_pool_events() -> Vec<Event> {
     return vec![
         Event::new("pool_exited").add_attributes(vec![
             attr("module", "gamm"),
             attr("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
             attr("pool_id", "1"),
-            attr("tokens_out", "9970022uosmo"),
+            attr("tokens_out", "100008ibc/27394FB092D2ECCD56123C74F36E4C1F926001CEADA9CA97EA622B25F41E5EB2,4985011uosmo"),
+        ]),
+        Event::new("token_swapped").add_attributes(vec![
+            attr("module", "gamm"),
+            attr("sender", "osmo1q4aw0vtcyyredprm4ncmr4jdj70kpgyr3"),
+            attr("pool_id", "1"),
+            attr("tokens_in", "100008ibc/27394FB092D2ECCD56123C74F36E4C1F926001CEADA9CA97EA622B25F41E5EB2"),
+            attr("tokens_out", "4985011uosmo"),
         ]),
         Event::new("burn").add_attributes(vec![
             attr("burner", "osmo1c9y7crgg6y9pfkq0y8mqzknqz84c3etr0kpcvj"),
