@@ -7,26 +7,35 @@ Contract to allow ibc queries from remote chains.
 **PacketMsg**:
 Data packet sent by a blockchain. It contains the following parameters:
 
-| Parameter | Type   | Description                       |
-|-----------|--------|-----------------------------------|
-| Path      | string | Service query path                |
-| Data      | string | Protobuf message (base64 encoded) |
+| Parameter | Type   | Description   |
+|-----------|--------|---------------|
+| query     | string | GammMsg query |
+
 
 Packet Msg example:
+- SpotPrice:
 ```json
 {
-  "path": "/osmosis.gamm.v1beta1.Query/SpotPrice",
-  "data": "CMQEEkRpYmMvQkUxQkI0MkQ0QkUz....jY4RDdDNDFEQjRERkNFOTY3OEU4RU="
+  "spot_price": {
+    "pool": "1",
+    "token_in": "uosmo",
+    "token_out": "uion"
+  }
 }
 ```
 
-Packet ACK example:
+- EstimateSwap:
 ```json
 {
-  "result": "ChY5NTUuNjcxNzc5MTY3NDI4NzM4MjAw"
+  "estimate_swap": {
+    "pool": "1",
+    "sender": "osmo16vj8qhvhvjptnlre8ke8p37f54z9wy68p7hxf6",
+    "amount": "1000000",
+    "token_in": "uosmo",
+    "token_out": "uion"
+  }
 }
 ```
-> return protobuf result (base64 encoded)
 
 ## Contract QueryMsg
 
