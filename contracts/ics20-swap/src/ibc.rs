@@ -507,7 +507,7 @@ fn receive_create_lockup(
         admin: None,
         msg: to_binary(&admin)?,
         code_id: config.lockup_id,
-        label: format!("Lockup {}", channel),
+        label: format!("Lockup {channel}"),
         funds: vec![],
     }
     .into();
@@ -790,8 +790,7 @@ mod test {
             CosmosMsg::Stargate { type_url, .. } => {
                 if !type_url.to_lowercase().contains(action) {
                     return Err(StdError::generic_err(format!(
-                        "Invalid stargate proto url: {}",
-                        type_url
+                        "Invalid stargate proto url: {type_url}"
                     )));
                 }
             }
@@ -824,7 +823,7 @@ mod test {
     ) -> Ics20Packet {
         Ics20Packet {
             // this is returning a foreign (our) token, thus denom is <port>/<channel>/<denom>
-            denom: format!("{}/{}/{}", REMOTE_PORT, "channel-1234", denom),
+            denom: format!("{REMOTE_PORT}/channel-1234/{denom}"),
             amount: amount.into(),
             sender: "remote-sender".to_string(),
             receiver: receiver.to_string(),

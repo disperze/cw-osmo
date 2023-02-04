@@ -166,7 +166,7 @@ pub fn execute_transfer(
         .add_attribute("sender", &packet.sender)
         .add_attribute("receiver", &packet.receiver)
         .add_attribute("denom", &packet.denom)
-        .add_attribute("amount", &packet.amount.to_string());
+        .add_attribute("amount", packet.amount.to_string());
 
     let burn = safe_burn(amount, our_chain);
     if let Some(msg) = burn {
@@ -557,7 +557,7 @@ mod test {
             assert_eq!(channel_id.as_str(), send_channel);
             let msg: Ics20Packet = from_binary(data).unwrap();
             assert_eq!(msg.amount, Uint128::new(888777666));
-            assert_eq!(msg.denom, format!("cw20:{}", cw20_addr));
+            assert_eq!(msg.denom, format!("cw20:{cw20_addr}"));
             assert_eq!(msg.sender.as_str(), "my-account");
             assert_eq!(msg.receiver.as_str(), "foreign-address");
         } else {

@@ -69,7 +69,7 @@ impl Amount {
 }
 
 pub fn get_cw20_denom(contract: &str) -> String {
-    format!("cw20:{}", contract)
+    format!("cw20:{contract}")
 }
 
 #[cfg(test)]

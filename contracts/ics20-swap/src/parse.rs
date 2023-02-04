@@ -37,13 +37,7 @@ impl GammResult for MsgExitSwapShareAmountInResponse {
 }
 
 pub fn find_event_type(events: Vec<Event>, key: &str) -> Option<Event> {
-    for ev in events {
-        if ev.ty.eq(&key) {
-            return Some(ev);
-        }
-    }
-
-    None
+    events.into_iter().find(|ev| ev.ty.eq(&key))
 }
 
 pub fn find_attributes(attributes: Vec<Attribute>, key: &str) -> Vec<String> {

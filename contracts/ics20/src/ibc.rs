@@ -527,7 +527,7 @@ mod test {
     ) -> IbcPacket {
         let data = Ics20Packet {
             // this is returning a foreign (our) token, thus denom is <port>/<channel>/<denom>
-            denom: format!("{}/{}/{}", REMOTE_PORT, "channel-1234", denom),
+            denom: format!("{REMOTE_PORT}/channel-1234/{denom}"),
             amount: amount.into(),
             sender: "remote-sender".to_string(),
             receiver: receiver.to_string(),
