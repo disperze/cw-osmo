@@ -67,7 +67,7 @@ pub struct ReplyArgs {
 }
 
 pub fn join_ibc_paths(path_a: &str, path_b: &str) -> String {
-    format!("{}/{}", path_a, path_b)
+    format!("{path_a}/{path_b}")
 }
 
 pub fn increase_channel_balance(

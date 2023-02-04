@@ -17,17 +17,15 @@ pub fn query_proto<M: prost::Message + ProtoUrl, R: prost::Message + std::defaul
 
 pub fn query_raw(deps: Deps, request: QueryRequest<Empty>) -> StdResult<Binary> {
     let raw = to_vec(&request).map_err(|serialize_err| {
-        StdError::generic_err(format!("Serializing QueryRequest: {}", serialize_err))
+        StdError::generic_err(format!("Serializing QueryRequest: {serialize_err}"))
     })?;
 
     match deps.querier.raw_query(&raw) {
         SystemResult::Err(system_err) => Err(StdError::generic_err(format!(
-            "Querier system error: {}",
-            system_err
+            "Querier system error: {system_err}"
         ))),
         SystemResult::Ok(ContractResult::Err(contract_err)) => Err(StdError::generic_err(format!(
-            "Querier contract error: {}",
-            contract_err
+            "Querier contract error: {contract_err}"
         ))),
         SystemResult::Ok(ContractResult::Ok(value)) => Ok(value),
     }

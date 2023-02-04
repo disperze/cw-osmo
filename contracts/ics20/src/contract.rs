@@ -166,7 +166,7 @@ pub fn execute_transfer(
         .add_attribute("sender", &packet.sender)
         .add_attribute("receiver", &packet.receiver)
         .add_attribute("denom", &packet.denom)
-        .add_attribute("amount", &packet.amount.to_string());
+        .add_attribute("amount", packet.amount.to_string());
 
     let burn = safe_burn(amount, our_chain);
     if let Some(msg) = burn {
