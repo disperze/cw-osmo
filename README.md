@@ -1,5 +1,5 @@
 # Osmosis contracts
-[![Contracts](https://img.shields.io/github/workflow/status/disperze/cw-osmo/Contracts/master?label=contract-build-tests)](https://github.com/disperze/cw-osmo/actions/workflows/cw.yml)
+[![Contracts](https://img.shields.io/github/actions/workflow/status/disperze/cw-osmo/cw.yml?branch=master&label=contract-build-tests)](https://github.com/disperze/cw-osmo/actions/workflows/cw.yml)
 [![Security audit](https://github.com/disperze/cw-osmo/actions/workflows/audit.yml/badge.svg)](https://github.com/disperze/cw-osmo/actions/workflows/audit.yml)
 
 Cosmwasm contracts to connect Juno and Osmosis zone.
